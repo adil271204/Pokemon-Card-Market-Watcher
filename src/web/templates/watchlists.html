@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Watchlists – Card Watcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-list-check me-2"></i>Watchlists</h2>
+  <a href="/watchlists/new" class="btn btn-success">
+    <i class="bi bi-plus-circle me-1"></i>Neue Watchlist
+  </a>
+</div>
+
+{% if watchlists %}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Query</th>
+            <th>Marketplace</th>
+            <th>Max Preis</th>
+            <th>Marktwert</th>
+            <th>Min. Rabatt</th>
+            <th>Grade</th>
+            <th>Sprache</th>
+            <th>Status</th>
+            <th>Erstellt</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for wl in watchlists %}
+          <tr class="{% if not wl.enabled %}table-secondary{% endif %}">
+            <td class="text-muted small">{{ wl.id }}</td>
+            <td class="fw-semibold">{{ wl.name }}</td>
+            <td class="text-truncate" style="max-width:200px" title="{{ wl.query }}">
+              <code class="small">{{ wl.query }}</code>
+            </td>
+            <td><span class="badge bg-secondary">{{ wl.marketplace }}</span></td>
+            <td>{{ wl.max_price ~ ' €' if wl.max_price else '–' }}</td>
+            <td>{{ wl.target_market_price ~ ' €' if wl.target_market_price else '–' }}</td>
+            <td>{{ wl.min_discount_percent }}%</td>
+            <td>{{ wl.target_grade or '–' }}</td>
+            <td>{{ wl.target_language or '–' }}</td>
+            <td>
+              {% if wl.enabled %}
+                <span class="badge bg-success">Aktiv</span>
+              {% else %}
+                <span class="badge bg-secondary">Inaktiv</span>
+              {% endif %}
+            </td>
+            <td class="text-muted small">{{ wl.created_at.strftime('%d.%m.%Y') if wl.created_at else '–' }}</td>
+            <td>
+              <div class="btn-group btn-group-sm">
+                <a href="/watchlists/{{ wl.id }}/edit" class="btn btn-outline-primary" title="Bearbeiten">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <form method="post" action="/watchlists/{{ wl.id }}/toggle" class="d-inline">
+                  <button type="submit" class="btn btn-outline-{% if wl.enabled %}warning{% else %}success{% endif %}" title="{% if wl.enabled %}Deaktivieren{% else %}Aktivieren{% endif %}">
+                    <i class="bi bi-{% if wl.enabled %}pause{% else %}play{% endif %}"></i>
+                  </button>
+                </form>
+                <form method="post" action="/watchlists/{{ wl.id }}/test" class="d-inline">
+                  <button type="submit" class="btn btn-outline-info" title="Jetzt testen">
+                    <i class="bi bi-play-circle"></i>
+                  </button>
+                </form>
+                <button type="button" class="btn btn-outline-danger" title="Löschen"
+                  onclick="confirmDelete({{ wl.id }}, '{{ wl.name | replace("'", "\\'") }}')">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox display-1"></i>
+  <p class="mt-3">Noch keine Watchlists vorhanden.</p>
+  <a href="/watchlists/new" class="btn btn-success">Erste Watchlist anlegen</a>
+</div>
+{% endif %}
+
+<!-- Delete confirm modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Watchlist löschen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Watchlist <strong id="deleteModalName"></strong> wirklich löschen?
+        Alle zugehörigen Listings und Alerts werden ebenfalls gelöscht.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <form id="deleteForm" method="post">
+          <button type="submit" class="btn btn-danger">Löschen</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmDelete(id, name) {
+  document.getElementById('deleteModalName').textContent = name;
+  document.getElementById('deleteForm').action = '/watchlists/' + id + '/delete';
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

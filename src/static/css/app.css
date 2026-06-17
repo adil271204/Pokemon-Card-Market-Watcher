@@ -1,0 +1,40 @@
+body {
+  background-color: #f8f9fa;
+  font-size: 0.9rem;
+}
+
+.navbar-brand {
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+}
+
+.table td, .table th {
+  vertical-align: middle;
+}
+
+.table .text-truncate {
+  display: block;
+}
+
+.card {
+  border-radius: 0.5rem;
+}
+
+.card-header {
+  background-color: #fff;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.badge {
+  font-weight: 500;
+}
+
+/* Score colour scale */
+.score-high   { background-color: #198754 !important; }
+.score-mid    { background-color: #0d6efd !important; }
+.score-low    { background-color: #6c757d !important; }
+
+/* Tighter pagination */
+.pagination .page-link {
+  padding: 0.25rem 0.6rem;
+}

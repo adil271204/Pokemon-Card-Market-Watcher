@@ -1,24 +1,48 @@
 services:
+  # -------------------------------------------------------------------
+  # 1. Watcher – Cron Job (existing, unchanged)
+  # -------------------------------------------------------------------
   - type: cron
     name: pokemon-card-watcher
     runtime: python
     plan: starter
-    schedule: "*/10 * * * *"   # every 10 minutes
+    schedule: "*/10 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py --once
     envVars:
-      # Paste your existing Render Postgres external connection string here,
-      # or set DATABASE_URL manually in the Render dashboard after deploy.
       - key: DATABASE_URL
         sync: false
       - key: USE_MOCK_EBAY
         value: "false"
       - key: EBAY_MARKETPLACE
         value: EBAY_DE
-      # Set these manually in the Render dashboard:
-      # EBAY_CLIENT_ID
-      # EBAY_CLIENT_SECRET
-      # TELEGRAM_BOT_TOKEN
-      # TELEGRAM_CHAT_ID
       - key: LOG_LEVEL
         value: INFO
+      # Set manually in dashboard: EBAY_CLIENT_ID, EBAY_CLIENT_SECRET,
+      # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+  # -------------------------------------------------------------------
+  # 2. Dashboard – Web Service (new)
+  # -------------------------------------------------------------------
+  - type: web
+    name: pokemon-card-dashboard
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn dashboard_app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: USE_MOCK_EBAY
+        value: "false"
+      - key: EBAY_MARKETPLACE
+        value: EBAY_DE
+      - key: LOG_LEVEL
+        value: INFO
+      # Set manually: EBAY_CLIENT_ID, EBAY_CLIENT_SECRET,
+      # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID

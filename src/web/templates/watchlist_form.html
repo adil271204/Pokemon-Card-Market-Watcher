@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{% if watchlist %}Watchlist bearbeiten{% else %}Neue Watchlist{% endif %} – Card Watcher{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="d-flex align-items-center mb-4">
+      <a href="/watchlists" class="btn btn-outline-secondary btn-sm me-3">
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <h2 class="mb-0">
+        {% if watchlist %}
+          <i class="bi bi-pencil me-2"></i>Watchlist bearbeiten
+        {% else %}
+          <i class="bi bi-plus-circle me-2"></i>Neue Watchlist
+        {% endif %}
+      </h2>
+    </div>
+
+    {% if errors %}
+      <div class="alert alert-danger">
+        <ul class="mb-0">
+          {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-body">
+        <form method="post" action="{% if watchlist %}/watchlists/{{ watchlist.id }}/edit{% else %}/watchlists/new{% endif %}">
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control"
+              value="{{ watchlist.name if watchlist else '' }}" required placeholder="z.B. Umbreon VMAX Alt Art PSA 10">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Search Query <span class="text-danger">*</span></label>
+            <input type="text" name="query" class="form-control"
+              value="{{ watchlist.query if watchlist else '' }}" required placeholder="z.B. Umbreon VMAX 215/203 PSA 10">
+            <div class="form-text">Dieser Begriff wird direkt an eBay übergeben.</div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Marketplace</label>
+              <select name="marketplace" class="form-select">
+                {% set mp = watchlist.marketplace if watchlist else 'EBAY_DE' %}
+                <option value="EBAY_DE" {% if mp == 'EBAY_DE' %}selected{% endif %}>EBAY_DE</option>
+                <option value="EBAY_US" {% if mp == 'EBAY_US' %}selected{% endif %}>EBAY_US</option>
+                <option value="EBAY_GB" {% if mp == 'EBAY_GB' %}selected{% endif %}>EBAY_GB</option>
+                <option value="EBAY_FR" {% if mp == 'EBAY_FR' %}selected{% endif %}>EBAY_FR</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Max. Preis (€)</label>
+              <input type="number" name="max_price" class="form-control" step="0.01" min="0"
+                value="{{ watchlist.max_price if watchlist and watchlist.max_price else '' }}"
+                placeholder="Optional – kein Limit">
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Ziel-Marktwert (€)</label>
+              <input type="number" name="target_market_price" class="form-control" step="0.01" min="0.01"
+                value="{{ watchlist.target_market_price if watchlist and watchlist.target_market_price else '' }}"
+                placeholder="z.B. 1500">
+              <div class="form-text">Wird für die Rabatt- und Score-Berechnung verwendet.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Min. Rabatt (%)</label>
+              <input type="number" name="min_discount_percent" class="form-control" step="0.1" min="0" max="100"
+                value="{{ watchlist.min_discount_percent if watchlist else '15' }}" required>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Target Grade</label>
+              <input type="text" name="target_grade" class="form-control"
+                value="{{ watchlist.target_grade if watchlist and watchlist.target_grade else '' }}"
+                placeholder="z.B. PSA 10">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Target Language</label>
+              <input type="text" name="target_language" class="form-control"
+                value="{{ watchlist.target_language if watchlist and watchlist.target_language else '' }}"
+                placeholder="z.B. English">
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="enabled" id="enabled"
+                {% if not watchlist or watchlist.enabled %}checked{% endif %}>
+              <label class="form-check-label fw-semibold" for="enabled">Aktiv</label>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-circle me-1"></i>Speichern
+            </button>
+            <a href="/watchlists" class="btn btn-outline-secondary">Abbrechen</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

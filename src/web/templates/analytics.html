@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Analytics – Card Watcher{% endblock %}
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-bar-chart-line me-2"></i>Analytics</h2>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="display-6 fw-bold text-primary">{{ data.total_listings }}</div>
+        <div class="text-muted">Listings gesamt</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="display-6 fw-bold text-success">{{ data.total_alerts }}</div>
+        <div class="text-muted">Alerts gesamt</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="display-6 fw-bold text-warning">{{ data.alert_ratio }}%</div>
+        <div class="text-muted">Alert-Quote (Listings → Alerts)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Alerts per day chart -->
+<div class="card mb-4">
+  <div class="card-header fw-semibold"><i class="bi bi-calendar-range me-1"></i>Alerts pro Tag (letzte 30 Tage)</div>
+  <div class="card-body">
+    {% if data.alerts_per_day %}
+      <canvas id="alertsChart" height="80"></canvas>
+    {% else %}
+      <p class="text-muted text-center py-3">Noch keine Daten vorhanden.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <!-- Top Watchlists -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-trophy me-1"></i>Top Watchlists nach Alerts</div>
+      <div class="card-body p-0">
+        {% if data.top_watchlists %}
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light"><tr><th>Watchlist</th><th class="text-end">Alerts</th></tr></thead>
+            <tbody>
+              {% for wl in data.top_watchlists %}
+              <tr>
+                <td class="text-truncate" style="max-width:220px">{{ wl.name }}</td>
+                <td class="text-end"><span class="badge bg-primary">{{ wl.count }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted p-3">Keine Daten vorhanden.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Avg discount per watchlist -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-percent me-1"></i>Ø Rabatt pro Watchlist</div>
+      <div class="card-body p-0">
+        {% if data.avg_discount_per_wl %}
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light"><tr><th>Watchlist</th><th class="text-end">Ø Rabatt</th></tr></thead>
+            <tbody>
+              {% for wl in data.avg_discount_per_wl %}
+              <tr>
+                <td class="text-truncate" style="max-width:220px">{{ wl.name }}</td>
+                <td class="text-end"><span class="badge bg-success">{{ wl.avg_discount }}%</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted p-3">Keine Daten vorhanden.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Listings per watchlist -->
+<div class="card">
+  <div class="card-header fw-semibold"><i class="bi bi-card-list me-1"></i>Listings pro Watchlist</div>
+  <div class="card-body p-0">
+    {% if data.listings_per_wl %}
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light"><tr><th>Watchlist</th><th class="text-end">Listings</th></tr></thead>
+        <tbody>
+          {% for wl in data.listings_per_wl %}
+          <tr>
+            <td class="text-truncate" style="max-width:400px">{{ wl.name }}</td>
+            <td class="text-end"><span class="badge bg-secondary">{{ wl.count }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="text-muted p-3">Keine Daten vorhanden.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if data.alerts_per_day %}
+<script>
+const ctx = document.getElementById('alertsChart');
+const labels = {{ data.alerts_per_day | map(attribute='day') | list | tojson }};
+const counts = {{ data.alerts_per_day | map(attribute='count') | list | tojson }};
+const scores = {{ data.alerts_per_day | map(attribute='avg_score') | list | tojson }};
+
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'Alerts',
+        data: counts,
+        backgroundColor: 'rgba(13, 110, 253, 0.7)',
+        yAxisID: 'y',
+      },
+      {
+        label: 'Ø Score',
+        data: scores,
+        type: 'line',
+        borderColor: 'rgba(25, 135, 84, 1)',
+        backgroundColor: 'transparent',
+        tension: 0.3,
+        yAxisID: 'y2',
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: { beginAtZero: true, title: { display: true, text: 'Alerts' } },
+      y2: { beginAtZero: true, position: 'right', title: { display: true, text: 'Score' }, grid: { drawOnChartArea: false } }
+    }
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

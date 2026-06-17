@@ -1,6 +1,8 @@
 """Application configuration loaded from environment variables."""
 
 import os
+import secrets
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,3 +27,16 @@ TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID: str | None = os.getenv("TELEGRAM_CHAT_ID")
 
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+
+# Dashboard auth
+DASHBOARD_PASSWORD: str | None = os.getenv("DASHBOARD_PASSWORD")
+
+_raw_secret = os.getenv("SESSION_SECRET")
+if _raw_secret:
+    SESSION_SECRET: str = _raw_secret
+else:
+    # Ephemeral fallback – sessions reset on every restart; fine locally,
+    # not acceptable in production.
+    SESSION_SECRET = secrets.token_hex(32)
+
+SESSION_SECRET_IS_SET: bool = bool(_raw_secret)

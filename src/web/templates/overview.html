@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Übersicht – Card Watcher{% endblock %}
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Übersicht</h2>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100 border-success">
+      <div class="card-body">
+        <div class="display-6 text-success fw-bold">{{ stats.active_watchlists }}</div>
+        <div class="text-muted small">Aktive Watchlists</div>
+        <div class="text-muted small">({{ stats.total_watchlists }} gesamt)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100 border-info">
+      <div class="card-body">
+        <div class="display-6 text-info fw-bold">{{ stats.total_listings }}</div>
+        <div class="text-muted small">Gesehene Listings</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100 border-warning">
+      <div class="card-body">
+        <div class="display-6 text-warning fw-bold">{{ stats.total_alerts }}</div>
+        <div class="text-muted small">Alerts gesamt</div>
+        <div class="text-muted small">({{ stats.alerts_24h }} letzte 24h)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100 border-primary">
+      <div class="card-body">
+        <div class="display-6 text-primary fw-bold">{{ stats.avg_score }}</div>
+        <div class="text-muted small">Ø Deal-Score</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <!-- Best Deal -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-trophy me-1 text-warning"></i>Bester Deal</div>
+      <div class="card-body">
+        {% if stats.best_alert %}
+          <p class="mb-1 fw-semibold">{{ stats.best_alert.title }}</p>
+          <p class="mb-1 text-muted small">
+            Score: <span class="badge bg-success">{{ stats.best_alert.score | round(1) }}</span>
+            &nbsp;Rabatt: {{ stats.best_alert.discount_percent | round(1) }}%
+            &nbsp;Preis: {{ stats.best_alert.total_price }} {{ stats.best_alert.target_market_price and "€" or "" }}
+          </p>
+          {% if stats.best_alert.url %}
+            <a href="{{ stats.best_alert.url }}" target="_blank" class="btn btn-sm btn-outline-primary mt-1">
+              <i class="bi bi-box-arrow-up-right me-1"></i>eBay öffnen
+            </a>
+          {% endif %}
+        {% else %}
+          <p class="text-muted">Noch keine Alerts vorhanden.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Watchlists -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-bar-chart me-1"></i>Top Watchlists nach Alerts</div>
+      <div class="card-body p-0">
+        {% if stats.top_watchlists %}
+          <ul class="list-group list-group-flush">
+            {% for wl in stats.top_watchlists %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span class="text-truncate" style="max-width:70%">{{ wl.name }}</span>
+                <span class="badge bg-primary rounded-pill">{{ wl.alert_count }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted p-3">Keine Daten vorhanden.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Listings -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-card-list me-1"></i>Neueste Listings</span>
+    <a href="/listings" class="btn btn-sm btn-outline-secondary">Alle anzeigen</a>
+  </div>
+  <div class="card-body p-0">
+    {% if recent_listings %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Titel</th>
+              <th>Preis</th>
+              <th>Zuerst gesehen</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in recent_listings %}
+              <tr>
+                <td class="text-truncate" style="max-width:300px" title="{{ l.title }}">{{ l.title }}</td>
+                <td>{{ l.total_price }} {{ l.currency }}</td>
+                <td class="text-muted small">{{ l.first_seen_at.strftime('%d.%m.%Y %H:%M') if l.first_seen_at else '–' }}</td>
+                <td>
+                  {% if l.url %}
+                    <a href="{{ l.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0">
+                      <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted p-3">Noch keine Listings vorhanden.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Recent Alerts -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-bell me-1"></i>Neueste Alerts</span>
+    <a href="/alerts" class="btn btn-sm btn-outline-secondary">Alle anzeigen</a>
+  </div>
+  <div class="card-body p-0">
+    {% if recent_alerts %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Titel</th>
+              <th>Preis</th>
+              <th>Rabatt</th>
+              <th>Score</th>
+              <th>Gesendet</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in recent_alerts %}
+              <tr>
+                <td class="text-truncate" style="max-width:260px" title="{{ a.title }}">{{ a.title }}</td>
+                <td>{{ a.total_price }} €</td>
+                <td><span class="badge bg-success">{{ a.discount_percent | round(1) }}%</span></td>
+                <td><span class="badge bg-primary">{{ a.score | round(0) | int }}</span></td>
+                <td class="text-muted small">{{ a.sent_at.strftime('%d.%m.%Y %H:%M') if a.sent_at else '–' }}</td>
+                <td>
+                  {% if a.url %}
+                    <a href="{{ a.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0">
+                      <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted p-3">Noch keine Alerts vorhanden.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
