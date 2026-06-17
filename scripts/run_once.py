@@ -1,7 +1,5 @@
 """
-Manually trigger one watcher cycle (identical to main.py).
-
-Useful for local testing without relying on the cron schedule.
+Manually trigger one watcher cycle without starting the continuous loop.
 
     python scripts/run_once.py
 """
@@ -9,6 +7,7 @@ Useful for local testing without relying on the cron schedule.
 import sys
 
 sys.path.insert(0, ".")
+sys.argv.append("--once")
 
 import main  # noqa: E402
 

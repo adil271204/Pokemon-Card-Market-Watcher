@@ -2,9 +2,10 @@ services:
   - type: cron
     name: pokemon-card-watcher
     runtime: python
+    plan: starter
     schedule: "*/10 * * * *"   # every 10 minutes
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
+    startCommand: python main.py --once
     envVars:
       # Paste your existing Render Postgres external connection string here,
       # or set DATABASE_URL manually in the Render dashboard after deploy.
