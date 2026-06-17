@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     schedule: "*/10 * * * *"
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/add_watchlist.py
     startCommand: python main.py --once
     envVars:
       - key: DATABASE_URL
