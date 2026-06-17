@@ -1,24 +1,18 @@
-databases:
-  - name: pokemon-card-market-db
-    databaseName: pokemon_watcher
-    user: pokemon_watcher
-
 services:
   # -------------------------------------------------------------------
   # 1. Dashboard – Web Service
+  # NOTE: Set DATABASE_URL, DASHBOARD_PASSWORD, SESSION_SECRET manually
+  #       in the Render dashboard after deploy.
   # -------------------------------------------------------------------
   - type: web
     name: pokemon-card-market-web
     runtime: python
-    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn dashboard_app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: pokemon-card-market-db
-          property: connectionString
+        sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
       - key: SESSION_SECRET
@@ -29,8 +23,6 @@ services:
         value: EBAY_DE
       - key: LOG_LEVEL
         value: INFO
-      # Set manually: EBAY_CLIENT_ID, EBAY_CLIENT_SECRET,
-      # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
   # -------------------------------------------------------------------
   # 2. Watcher – Cron Job
@@ -44,14 +36,10 @@ services:
     startCommand: python main.py --once
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: pokemon-card-market-db
-          property: connectionString
+        sync: false
       - key: USE_MOCK_EBAY
         value: "false"
       - key: EBAY_MARKETPLACE
         value: EBAY_DE
       - key: LOG_LEVEL
         value: INFO
-      # Set manually: EBAY_CLIENT_ID, EBAY_CLIENT_SECRET,
-      # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
