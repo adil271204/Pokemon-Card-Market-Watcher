@@ -1,9 +1,3 @@
-databases:
-  - name: pokemon-watcher-db
-    databaseName: pokemon_watcher
-    user: pokemon_watcher
-    plan: free
-
 services:
   - type: cron
     name: pokemon-card-watcher
@@ -12,10 +6,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
+      # Paste your existing Render Postgres external connection string here,
+      # or set DATABASE_URL manually in the Render dashboard after deploy.
       - key: DATABASE_URL
-        fromDatabase:
-          name: pokemon-watcher-db
-          property: connectionString
+        sync: false
       - key: USE_MOCK_EBAY
         value: "false"
       - key: EBAY_MARKETPLACE
