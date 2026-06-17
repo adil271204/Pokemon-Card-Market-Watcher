@@ -2,7 +2,6 @@ databases:
   - name: pokemon-card-market-db
     databaseName: pokemon_watcher
     user: pokemon_watcher
-    plan: starter
 
 services:
   # -------------------------------------------------------------------
