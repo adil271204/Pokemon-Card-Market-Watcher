@@ -1,4 +1,25 @@
 services:
+  - type: web
+    name: pokemon-card-market-web
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/add_watchlist.py
+    startCommand: uvicorn dashboard_app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DASHBOARD_PASSWORD
+        value: "changeme123"
+      - key: USE_MOCK_EBAY
+        value: "false"
+      - key: EBAY_MARKETPLACE
+        value: EBAY_DE
+      - key: LOG_LEVEL
+        value: INFO
+
   - type: cron
     name: pokemon-card-market-cron
     runtime: python
