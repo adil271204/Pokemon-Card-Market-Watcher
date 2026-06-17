@@ -1,0 +1,30 @@
+databases:
+  - name: pokemon-watcher-db
+    databaseName: pokemon_watcher
+    user: pokemon_watcher
+    plan: free
+
+services:
+  - type: cron
+    name: pokemon-card-watcher
+    runtime: python
+    plan: free
+    schedule: "*/10 * * * *"   # every 10 minutes
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pokemon-watcher-db
+          property: connectionString
+      - key: USE_MOCK_EBAY
+        value: "false"
+      - key: EBAY_MARKETPLACE
+        value: EBAY_DE
+      # Set these manually in the Render dashboard:
+      # EBAY_CLIENT_ID
+      # EBAY_CLIENT_SECRET
+      # TELEGRAM_BOT_TOKEN
+      # TELEGRAM_CHAT_ID
+      - key: LOG_LEVEL
+        value: INFO
