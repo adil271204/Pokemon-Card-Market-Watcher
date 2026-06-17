@@ -1,8 +1,3 @@
-databases:
-  - name: pokemon-card-market-db
-    databaseName: pokemon_watcher
-    user: pokemon_watcher
-
 services:
   - type: web
     name: pokemon-card-market-web
@@ -13,9 +8,7 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: pokemon-card-market-db
-          property: connectionString
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: DASHBOARD_PASSWORD
@@ -36,9 +29,7 @@ services:
     startCommand: python main.py --once
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: pokemon-card-market-db
-          property: connectionString
+        sync: false
       - key: USE_MOCK_EBAY
         value: "false"
       - key: EBAY_MARKETPLACE
