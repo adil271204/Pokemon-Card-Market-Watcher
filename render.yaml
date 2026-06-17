@@ -8,7 +8,6 @@ services:
   - type: cron
     name: pokemon-card-watcher
     runtime: python
-    plan: free
     schedule: "*/10 * * * *"   # every 10 minutes
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
