@@ -67,6 +67,11 @@ class RawListing:
     item_creation_date: str     # raw string from API
     item_origin_date: str       # raw string from API (preferred)
     listing_date: datetime | None  # parsed datetime: item_origin_date or item_creation_date
+    location_country: str | None   # from itemLocation.country (normalised uppercase, UK→GB)
+    location_city: str | None
+    location_postal_code: str | None
+    location_state: str | None
+    location_raw: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -88,8 +93,9 @@ _MOCK_LISTINGS: list[dict[str, Any]] = [
         "itemWebUrl": "https://www.ebay.de/itm/mock-001",
         "image": {"imageUrl": "https://i.ebayimg.com/images/mock-001.jpg"},
         "condition": "Used",
-        "itemCreationDate": _days_ago_iso(0),   # heute
+        "itemCreationDate": _days_ago_iso(0),
         "itemOriginDate": _days_ago_iso(0),
+        "itemLocation": {"country": "DE", "city": "Berlin", "postalCode": "10115"},
     },
     {
         "itemId": "mock-002",
@@ -99,8 +105,9 @@ _MOCK_LISTINGS: list[dict[str, Any]] = [
         "itemWebUrl": "https://www.ebay.de/itm/mock-002",
         "image": {"imageUrl": "https://i.ebayimg.com/images/mock-002.jpg"},
         "condition": "Used",
-        "itemCreationDate": _days_ago_iso(3),   # vor 3 Tagen
+        "itemCreationDate": _days_ago_iso(3),
         "itemOriginDate": _days_ago_iso(3),
+        "itemLocation": {"country": "FR", "city": "Paris", "postalCode": "75001"},
     },
     {
         "itemId": "mock-003",
@@ -110,8 +117,9 @@ _MOCK_LISTINGS: list[dict[str, Any]] = [
         "itemWebUrl": "https://www.ebay.de/itm/mock-003",
         "image": {"imageUrl": "https://i.ebayimg.com/images/mock-003.jpg"},
         "condition": "Used",
-        "itemCreationDate": _days_ago_iso(10),  # vor 10 Tagen
+        "itemCreationDate": _days_ago_iso(10),
         "itemOriginDate": _days_ago_iso(10),
+        "itemLocation": {"country": "GB", "city": "London", "postalCode": "EC1A"},  # UK – wird gefiltert
     },
     {
         "itemId": "mock-004",
@@ -121,8 +129,9 @@ _MOCK_LISTINGS: list[dict[str, Any]] = [
         "itemWebUrl": "https://www.ebay.de/itm/mock-004",
         "image": {"imageUrl": "https://i.ebayimg.com/images/mock-004.jpg"},
         "condition": "Like New",
-        "itemCreationDate": _days_ago_iso(20),  # vor 20 Tagen – wird bei lookback=14 rausgefiltert
+        "itemCreationDate": _days_ago_iso(20),  # vor 20 Tagen – bei lookback=14 rausgefiltert
         "itemOriginDate": _days_ago_iso(20),
+        "itemLocation": {"country": "DE", "city": "München", "postalCode": "80331"},
     },
 ]
 
@@ -174,6 +183,14 @@ def _parse_listing(raw: dict[str, Any]) -> RawListing:
             listing_date_str,
         )
 
+    # Location from itemLocation (official Browse API field)
+    item_location: dict[str, Any] = raw.get("itemLocation") or {}
+    raw_country = item_location.get("country") or ""
+    norm_country = raw_country.strip().upper()
+    if norm_country == "UK":
+        norm_country = "GB"
+    location_country = norm_country or None
+
     return RawListing(
         ebay_item_id=str(raw["itemId"]),
         title=raw.get("title", ""),
@@ -188,6 +205,11 @@ def _parse_listing(raw: dict[str, Any]) -> RawListing:
         item_creation_date=item_creation_date,
         item_origin_date=item_origin_date,
         listing_date=listing_date,
+        location_country=location_country,
+        location_city=item_location.get("city") or None,
+        location_postal_code=item_location.get("postalCode") or None,
+        location_state=item_location.get("stateOrProvince") or None,
+        location_raw=item_location,
         raw=raw,
     )
 

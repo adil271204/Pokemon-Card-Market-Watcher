@@ -17,6 +17,7 @@ from src.database import get_session
 from src.deal_scorer import calculate_deal_score
 from src.ebay_client import EbayClient
 from src.listing_cleaner import clean_and_classify_listing
+from src.location_filter import is_allowed_location
 from src.models import SeenListing, Watchlist
 from src.web import auth, services
 
@@ -327,6 +328,7 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
         db.close()
 
     results: list[dict[str, Any]] = []
+    excluded_location: list[dict[str, Any]] = []
     try:
         client = EbayClient()
         raw_listings = client.search_new_listings(
@@ -335,6 +337,22 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
             max_price=wl_data["max_price"],
         )
         for listing in raw_listings:
+            loc_allowed, loc_reasons = is_allowed_location(
+                listing.location_country,
+                config.EBAY_ALLOWED_COUNTRIES,
+                config.EBAY_EXCLUDED_COUNTRIES,
+                config.EBAY_ALLOW_UNKNOWN_LOCATION,
+            )
+            if not loc_allowed:
+                excluded_location.append({
+                    "title": listing.title,
+                    "location_country": listing.location_country or "–",
+                    "location_city": listing.location_city or "–",
+                    "reasons": loc_reasons,
+                    "url": listing.url,
+                })
+                continue
+
             cl = clean_and_classify_listing(listing.title, target_grade=wl_data["target_grade"])
             deal = calculate_deal_score(
                 listing=listing,
@@ -350,6 +368,8 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
                 "total_price": listing.total_price,
                 "currency": listing.currency,
                 "url": listing.url,
+                "location_country": listing.location_country or "–",
+                "location_city": listing.location_city or "–",
                 "is_bad_match": cl.is_bad_match,
                 "reasons": cl.reasons,
                 "grade": f"{cl.grading_company} {cl.grade}" if cl.is_graded else "–",
@@ -367,6 +387,7 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
         "wl_name": wl_data["name"],
         "watchlist_id": watchlist_id,
         "results": results,
+        "excluded_location": excluded_location,
     })
 
 
@@ -401,16 +422,27 @@ def _run_backfill(
         "saved": 0,
         "skipped_known": 0,
         "skipped_old": 0,
+        "skipped_location": 0,
         "no_url": 0,
         "within_lookback": 0,
     }
 
     for listing in raw_listings:
-        # Count listings without URL (don't skip, just note)
         if not listing.url:
             stats["no_url"] += 1
 
-        # Date check (client already filtered, but double-check)
+        # Location filter
+        allowed, _reasons = is_allowed_location(
+            listing.location_country,
+            config.EBAY_ALLOWED_COUNTRIES,
+            config.EBAY_EXCLUDED_COUNTRIES,
+            config.EBAY_ALLOW_UNKNOWN_LOCATION,
+        )
+        if not allowed:
+            stats["skipped_location"] += 1
+            continue
+
+        # Date check
         if listing.listing_date is not None and listing.listing_date < cutoff:
             stats["skipped_old"] += 1
             continue
@@ -427,16 +459,6 @@ def _run_backfill(
             stats["skipped_known"] += 1
             continue
 
-        # Classify + score (for storage, not for alerting)
-        cl = clean_and_classify_listing(listing.title, target_grade=wl_data.get("target_grade"))
-        deal = calculate_deal_score(
-            listing=listing,
-            target_market_price=wl_data.get("target_market_price"),
-            min_discount_percent=wl_data.get("min_discount_percent", 15.0),
-            classification=cl,
-            target_grade=wl_data.get("target_grade"),
-        )
-
         seen = SeenListing(
             ebay_item_id=listing.ebay_item_id,
             watchlist_id=wl_data["id"],
@@ -451,6 +473,11 @@ def _run_backfill(
             listing_date=listing.listing_date,
             item_creation_date=listing.item_creation_date,
             item_origin_date=listing.item_origin_date,
+            location_country=listing.location_country,
+            location_city=listing.location_city,
+            location_postal_code=listing.location_postal_code,
+            location_state=listing.location_state,
+            location_raw_json=json.dumps(listing.location_raw) if listing.location_raw else None,
             raw_payload_json=json.dumps(listing.raw),
         )
         db_session.add(seen)
@@ -773,6 +800,9 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
         "EBAY_SEARCH_LIMIT": str(config.EBAY_SEARCH_LIMIT),
         "EBAY_LOOKBACK_DAYS": str(config.EBAY_LOOKBACK_DAYS),
         "EBAY_MAX_PAGES": str(config.EBAY_MAX_PAGES),
+        "EBAY_ALLOWED_COUNTRIES": ", ".join(sorted(config.EBAY_ALLOWED_COUNTRIES)),
+        "EBAY_EXCLUDED_COUNTRIES": ", ".join(sorted(config.EBAY_EXCLUDED_COUNTRIES)),
+        "EBAY_ALLOW_UNKNOWN_LOCATION": str(config.EBAY_ALLOW_UNKNOWN_LOCATION),
         "EBAY_CLIENT_ID": "✓ gesetzt" if config.EBAY_CLIENT_ID else "✗ fehlt",
         "EBAY_CLIENT_SECRET": "✓ gesetzt" if config.EBAY_CLIENT_SECRET else "✗ fehlt",
         # Telegram
@@ -795,6 +825,11 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
         )
     if not config.USE_MOCK_EBAY and config.EBAY_ENV == "sandbox":
         warnings.append("EBAY_ENV=sandbox – du nutzt die eBay Sandbox, keine echten Listings!")
+    if "GB" not in config.EBAY_EXCLUDED_COUNTRIES:
+        warnings.append(
+            "GB/UK ist nicht in EBAY_EXCLUDED_COUNTRIES – UK-Listings werden nicht gefiltert. "
+            "Empfehlung: GB hinzufügen, um Einfuhrabgaben-Probleme zu vermeiden."
+        )
 
     return _render(request, "settings.html", {
         "cfg": cfg,

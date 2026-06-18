@@ -123,6 +123,7 @@
             <tr>
               <th>Titel</th>
               <th>Preis</th>
+              <th>Land</th>
               <th>Zuerst gesehen</th>
               <th>Link</th>
               <th></th>
@@ -131,8 +132,16 @@
           <tbody>
             {% for l in recent_listings %}
               <tr>
-                <td class="text-truncate" style="max-width:280px" title="{{ l.title }}">{{ l.title }}</td>
+                <td class="text-truncate" style="max-width:240px" title="{{ l.title }}">{{ l.title }}</td>
                 <td>{{ l.total_price }} {{ l.currency }}</td>
+                <td class="small text-nowrap">
+                  {% if l.location_country %}
+                    <span class="badge bg-secondary">{{ l.location_country }}</span>
+                    {% if l.location_city %}<span class="text-muted ms-1">{{ l.location_city }}</span>{% endif %}
+                  {% else %}
+                    <span class="text-muted">–</span>
+                  {% endif %}
+                </td>
                 <td class="text-muted small">{{ l.first_seen_at.strftime('%d.%m.%Y %H:%M') if l.first_seen_at else '–' }}</td>
                 <td>
                   {% if l.url %}

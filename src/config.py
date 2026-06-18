@@ -27,6 +27,26 @@ EBAY_SEARCH_LIMIT: int = int(os.getenv("EBAY_SEARCH_LIMIT", "50"))
 EBAY_LOOKBACK_DAYS: int = int(os.getenv("EBAY_LOOKBACK_DAYS", "14"))
 EBAY_MAX_PAGES: int = int(os.getenv("EBAY_MAX_PAGES", "5"))
 
+# Location filter
+_EU_DEFAULT = "DE,AT,FR,IT,ES,NL,BE,PL,IE,PT,SE,FI,DK,CZ,SK,SI,HU,HR,RO,BG,GR,LT,LV,EE,LU,MT,CY"
+_EXCLUDED_DEFAULT = "GB,UK,US,CN,JP,CA,AU"
+
+
+def _parse_country_set(raw: str | None, default: str) -> set[str]:
+    src = raw if raw and raw.strip() else default
+    return {c.strip().upper().replace("UK", "GB") for c in src.split(",") if c.strip()}
+
+
+EBAY_ALLOWED_COUNTRIES: set[str] = _parse_country_set(
+    os.getenv("EBAY_ALLOWED_COUNTRIES"), _EU_DEFAULT
+)
+EBAY_EXCLUDED_COUNTRIES: set[str] = _parse_country_set(
+    os.getenv("EBAY_EXCLUDED_COUNTRIES"), _EXCLUDED_DEFAULT
+)
+EBAY_ALLOW_UNKNOWN_LOCATION: bool = os.getenv(
+    "EBAY_ALLOW_UNKNOWN_LOCATION", "false"
+).lower() in ("true", "1", "yes")
+
 # Telegram
 TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID: str | None = os.getenv("TELEGRAM_CHAT_ID")

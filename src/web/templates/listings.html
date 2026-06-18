@@ -69,6 +69,7 @@
             <th>Zuerst gesehen</th>
             <th>Titel</th>
             <th>Watchlist</th>
+            <th>Land</th>
             <th>Zustand</th>
             <th>Preis</th>
             <th>Versand</th>
@@ -94,6 +95,14 @@
             <td class="text-muted small text-nowrap">{{ l.first_seen_at.strftime('%d.%m.%Y %H:%M') if l.first_seen_at else '–' }}</td>
             <td class="text-truncate" style="max-width:260px" title="{{ l.title }}">{{ l.title }}</td>
             <td class="small">{{ wl_map.get(l.watchlist_id, '–') }}</td>
+            <td class="small text-nowrap">
+              {% if l.location_country %}
+                <span class="badge bg-secondary">{{ l.location_country }}</span>
+                {% if l.location_city %}<span class="text-muted ms-1">{{ l.location_city }}</span>{% endif %}
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </td>
             <td class="small">{{ l.condition or '–' }}</td>
             <td>{{ l.price }}</td>
             <td>{{ l.shipping }}</td>

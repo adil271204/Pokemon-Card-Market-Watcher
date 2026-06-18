@@ -315,7 +315,31 @@ future enhancement.
 
 ---
 
-## 13. Listings ausblenden (Soft Delete)
+## 13. Länderfilter (EU-only, kein UK)
+
+Standardmäßig werden nur Listings aus EU-Ländern gespeichert und für Alerts berücksichtigt.
+
+**Warum kein UK?**
+Nach dem Brexit fallen bei Lieferungen aus Großbritannien Einfuhrabgaben an. UK/GB ist daher standardmäßig ausgeschlossen.
+
+**Wie funktioniert der Filter?**
+Der Filter basiert auf dem Feld `itemLocation.country` der offiziellen eBay Browse API (`GET /buy/browse/v1/item_summary/search`). Es wird kein Scraping verwendet.
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `EBAY_ALLOWED_COUNTRIES` | alle EU-Länder | Nur diese Länder werden gespeichert |
+| `EBAY_EXCLUDED_COUNTRIES` | `GB,UK,US,CN,JP,CA,AU` | Diese Länder werden immer abgelehnt |
+| `EBAY_ALLOW_UNKNOWN_LOCATION` | `false` | Listings ohne Standort ablehnen |
+
+**Migration (einmalig):**
+```bash
+python scripts/migrate_listing_location_fields.py
+```
+Auf Render läuft die Migration automatisch beim Deploy.
+
+---
+
+## 14. Listings ausblenden (Soft Delete)
 
 Listings werden **niemals physisch gelöscht**. Stattdessen wird ein `deleted_at`-Timestamp gesetzt. Ausgeblendete Listings:
 

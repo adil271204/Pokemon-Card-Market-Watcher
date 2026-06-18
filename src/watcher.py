@@ -5,10 +5,12 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from src import config
 from src.database import get_session
 from src.deal_scorer import calculate_deal_score
 from src.ebay_client import EbayClient, RawListing
 from src.listing_cleaner import clean_and_classify_listing
+from src.location_filter import is_allowed_location
 from src.models import Alert, SeenListing, Watchlist
 from src.telegram_notifier import TelegramNotifier
 
@@ -110,6 +112,11 @@ class Watcher:
             listing_date=listing.listing_date,
             item_creation_date=listing.item_creation_date,
             item_origin_date=listing.item_origin_date,
+            location_country=listing.location_country,
+            location_city=listing.location_city,
+            location_postal_code=listing.location_postal_code,
+            location_state=listing.location_state,
+            location_raw_json=json.dumps(listing.location_raw) if listing.location_raw else None,
             raw_payload_json=json.dumps(listing.raw),
         )
         session.add(seen)
@@ -138,6 +145,20 @@ class Watcher:
         self, listing: RawListing, wl: Watchlist, session: Session
     ) -> bool:
         """Process a single listing. Returns True if it was new."""
+        # Location filter – skip before any DB write
+        allowed, reasons = is_allowed_location(
+            listing.location_country,
+            config.EBAY_ALLOWED_COUNTRIES,
+            config.EBAY_EXCLUDED_COUNTRIES,
+            config.EBAY_ALLOW_UNKNOWN_LOCATION,
+        )
+        if not allowed:
+            logger.debug(
+                "Skipping listing %s – location rejected: %s (country=%s)",
+                listing.ebay_item_id, reasons, listing.location_country,
+            )
+            return False
+
         if self._is_seen(listing.ebay_item_id, session):
             logger.debug("Skipping already-seen listing %s", listing.ebay_item_id)
             return False
