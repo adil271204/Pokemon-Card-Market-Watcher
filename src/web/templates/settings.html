@@ -38,6 +38,24 @@
   </div>
 </div>
 
+<div class="card mb-4 {% if not use_mock_ebay and not ebay_keys_set %}border-danger{% elif use_mock_ebay %}border-warning{% else %}border-success{% endif %}">
+  <div class="card-header fw-semibold {% if not use_mock_ebay and not ebay_keys_set %}text-danger{% elif use_mock_ebay %}text-warning{% else %}text-success{% endif %}">
+    <i class="bi bi-shop me-1"></i>eBay API Status
+  </div>
+  <div class="card-body">
+    {% if use_mock_ebay %}
+      <span class="badge bg-warning text-dark fs-6"><i class="bi bi-bug me-1"></i>Mock-Modus aktiv</span>
+      <p class="mt-2 mb-0 small text-muted">Es werden keine echten eBay-Daten abgerufen. Setze <code>USE_MOCK_EBAY=false</code> und trage eBay API-Keys ein, um echte Listings zu sehen.</p>
+    {% elif ebay_keys_set %}
+      <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Echte eBay API aktiv</span>
+      <p class="mt-2 mb-0 small text-muted">OAuth 2.0 Client Credentials Flow. Token wird automatisch erneuert.</p>
+    {% else %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i>Konfigurationsfehler</span>
+      <p class="mt-2 mb-0 small text-danger">USE_MOCK_EBAY=false, aber EBAY_CLIENT_ID oder EBAY_CLIENT_SECRET fehlen. Der Watcher stürzt beim Start ab!</p>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card border-info">
   <div class="card-header fw-semibold text-info"><i class="bi bi-shield-lock me-1"></i>Sicherheitshinweise</div>
   <div class="card-body small">

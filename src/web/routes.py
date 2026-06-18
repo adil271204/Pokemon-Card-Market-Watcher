@@ -127,7 +127,10 @@ async def watchlists(request: Request) -> HTMLResponse | RedirectResponse:
         wls = services.get_all_watchlists(db)
     finally:
         db.close()
-    return _render(request, "watchlists.html", {"watchlists": wls})
+    return _render(request, "watchlists.html", {
+        "watchlists": wls,
+        "use_mock_ebay": config.USE_MOCK_EBAY,
+    })
 
 
 @router.get("/watchlists/new", response_class=HTMLResponse, response_model=None)
@@ -524,12 +527,17 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
 
     cfg = {
         "DATABASE_URL": masked_db,
+        # eBay
         "USE_MOCK_EBAY": str(config.USE_MOCK_EBAY),
+        "EBAY_ENV": config.EBAY_ENV,
         "EBAY_MARKETPLACE": config.EBAY_MARKETPLACE,
+        "EBAY_SEARCH_LIMIT": str(config.EBAY_SEARCH_LIMIT),
         "EBAY_CLIENT_ID": "✓ gesetzt" if config.EBAY_CLIENT_ID else "✗ fehlt",
         "EBAY_CLIENT_SECRET": "✓ gesetzt" if config.EBAY_CLIENT_SECRET else "✗ fehlt",
+        # Telegram
         "TELEGRAM_BOT_TOKEN": "✓ gesetzt" if config.TELEGRAM_BOT_TOKEN else "✗ fehlt",
         "TELEGRAM_CHAT_ID": "✓ gesetzt" if config.TELEGRAM_CHAT_ID else "✗ fehlt",
+        # Auth
         "DASHBOARD_PASSWORD": "✓ gesetzt" if config.DASHBOARD_PASSWORD else "✗ fehlt",
         "SESSION_SECRET": "✓ gesetzt" if config.SESSION_SECRET_IS_SET else "⚠ Nur Fallback – nicht sicher für Production!",
         "LOG_LEVEL": config.LOG_LEVEL,
@@ -539,8 +547,20 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
         warnings.append("DASHBOARD_PASSWORD ist nicht gesetzt – das Dashboard ist ohne Passwort erreichbar!")
     if not config.SESSION_SECRET_IS_SET:
         warnings.append("SESSION_SECRET ist nicht gesetzt – Sessions werden bei jedem Neustart ungültig.")
+    if not config.USE_MOCK_EBAY and not config.EBAY_KEYS_SET:
+        warnings.append(
+            "USE_MOCK_EBAY=false, aber EBAY_CLIENT_ID oder EBAY_CLIENT_SECRET fehlen! "
+            "Der Watcher wird beim Start abstürzen. Bitte Zugangsdaten im eBay Developer Portal anlegen."
+        )
+    if not config.USE_MOCK_EBAY and config.EBAY_ENV == "sandbox":
+        warnings.append("EBAY_ENV=sandbox – du nutzt die eBay Sandbox, keine echten Listings!")
 
-    return _render(request, "settings.html", {"cfg": cfg, "warnings": warnings})
+    return _render(request, "settings.html", {
+        "cfg": cfg,
+        "warnings": warnings,
+        "use_mock_ebay": config.USE_MOCK_EBAY,
+        "ebay_keys_set": config.EBAY_KEYS_SET,
+    })
 
 
 # ---------------------------------------------------------------------------

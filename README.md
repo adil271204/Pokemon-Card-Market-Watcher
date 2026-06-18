@@ -122,9 +122,11 @@ git push -u origin main
 |---|---|---|---|
 | `DATABASE_URL` | Yes (prod) | SQLite fallback | Full PostgreSQL connection string |
 | `USE_MOCK_EBAY` | No | `true` | Set to `false` to use the real eBay API |
-| `EBAY_CLIENT_ID` | Only if real API | – | eBay Developer App Client ID |
-| `EBAY_CLIENT_SECRET` | Only if real API | – | eBay Developer App Client Secret |
-| `EBAY_MARKETPLACE` | No | `EBAY_DE` | eBay marketplace ID |
+| `EBAY_CLIENT_ID` | If real API | – | eBay Developer App Client ID |
+| `EBAY_CLIENT_SECRET` | If real API | – | eBay Developer App Client Secret |
+| `EBAY_MARKETPLACE` | No | `EBAY_DE` | eBay marketplace ID (`EBAY_DE`, `EBAY_US`, …) |
+| `EBAY_ENV` | No | `production` | `production` or `sandbox` |
+| `EBAY_SEARCH_LIMIT` | No | `25` | Listings fetched per search run (max 200) |
 | `TELEGRAM_BOT_TOKEN` | No | – | Telegram Bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | No | – | Your Telegram chat/user ID |
 | `LOG_LEVEL` | No | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
@@ -224,7 +226,25 @@ Then in Render:
 
 ---
 
-## 11. Telegram Bot Setup
+## 11. eBay Developer Account Setup
+
+To use real eBay listings (`USE_MOCK_EBAY=false`), you need a free eBay Developer account:
+
+1. Go to [developer.ebay.com](https://developer.ebay.com) and sign in with your eBay account (or create one).
+2. Navigate to **My Account → Application Keysets**.
+3. Click **Create a Keyset** → choose **Production**.
+4. Copy **App ID (Client ID)** → set as `EBAY_CLIENT_ID`.
+5. Copy **Cert ID (Client Secret)** → set as `EBAY_CLIENT_SECRET`.
+6. Under **User Tokens**, make sure the **Browse API** scope (`https://api.ebay.com/oauth/api_scope`) is enabled. For the Client Credentials Flow (no user login), this scope is allowed by default.
+7. Set `EBAY_ENV=production` and `USE_MOCK_EBAY=false` in your environment.
+
+> **Sandbox:** If you want to test without real data, create a **Sandbox** keyset instead and set `EBAY_ENV=sandbox`. Sandbox listings are fake.
+
+> **Cost:** The eBay Browse API is free for personal/developer use within the standard call limits.
+
+---
+
+## 12. Telegram Bot Setup
 
 1. Open Telegram and message **@BotFather**.
 2. Send `/newbot` and follow the prompts. Copy the **HTTP API token**.
@@ -263,7 +283,7 @@ future enhancement.
 
 | Feature | Description |
 |---|---|
-| **Real eBay Browse API** | Replace mock mode with live API calls using OAuth Client Credentials |
+| **Real eBay Browse API** | ✅ Implemented – OAuth 2.0 Client Credentials with token caching |
 | **Sold-Data Module** | Pull actual sold prices from eBay Terapeak or eBay's completed listings to validate `target_market_price` automatically |
 | **Web Dashboard** | Simple Flask/FastAPI UI to manage watchlists and view alerts |
 | **Price History** | Track price trends for monitored cards over time |

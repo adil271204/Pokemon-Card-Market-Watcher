@@ -15,8 +15,16 @@ services:
         value: "changeme123"
       - key: USE_MOCK_EBAY
         value: "false"
+      - key: EBAY_ENV
+        value: production
       - key: EBAY_MARKETPLACE
         value: EBAY_DE
+      - key: EBAY_SEARCH_LIMIT
+        value: "25"
+      - key: EBAY_CLIENT_ID
+        sync: false
+      - key: EBAY_CLIENT_SECRET
+        sync: false
       - key: LOG_LEVEL
         value: INFO
 
@@ -32,7 +40,15 @@ services:
         sync: false
       - key: USE_MOCK_EBAY
         value: "false"
+      - key: EBAY_ENV
+        value: production
       - key: EBAY_MARKETPLACE
         value: EBAY_DE
+      - key: EBAY_SEARCH_LIMIT
+        value: "25"
+      - key: EBAY_CLIENT_ID
+        sync: false
+      - key: EBAY_CLIENT_SECRET
+        sync: false
       - key: LOG_LEVEL
         value: INFO
