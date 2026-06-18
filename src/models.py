@@ -64,6 +64,11 @@ class SeenListing(Base):
     total_price = Column(Float, nullable=True)
     currency = Column(String(10), nullable=True, default="EUR")
     url = Column(Text, nullable=True)
+    image_url = Column(Text, nullable=True)
+    condition = Column(String(100), nullable=True)
+    listing_date = Column(DateTime(timezone=True), nullable=True)
+    item_creation_date = Column(String(50), nullable=True)
+    item_origin_date = Column(String(50), nullable=True)
     raw_payload_json = Column(Text, nullable=True)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=_now)
 

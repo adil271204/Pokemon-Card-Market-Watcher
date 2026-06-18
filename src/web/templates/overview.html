@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Übersicht – Card Watcher{% endblock %}
 {% block content %}
-<h2 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Übersicht</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-speedometer2 me-2"></i>Übersicht</h2>
+  <form method="post" action="/backfill/recent">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-clock-history me-1"></i>Alle Watchlists: letzte 14 Tage laden
+    </button>
+  </form>
+</div>
 
 <!-- KPI Cards -->
 <div class="row g-3 mb-4">

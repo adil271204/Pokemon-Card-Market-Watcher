@@ -14,6 +14,7 @@ import base64
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import requests
@@ -51,7 +52,7 @@ class EbayRateLimitError(EbayAPIError):
 
 @dataclass
 class RawListing:
-    """Normalised listing returned by EbayClient.search_new_listings."""
+    """Normalised listing returned by EbayClient."""
 
     ebay_item_id: str
     title: str
@@ -59,16 +60,24 @@ class RawListing:
     shipping: float
     total_price: float
     currency: str
-    url: str                          # itemWebUrl – direct link to eBay article
+    url: str                    # itemWebUrl – direct link to eBay article
+    item_web_url: str           # same as url, explicit alias
     image_url: str
     condition: str
-    item_creation_date: str
+    item_creation_date: str     # raw string from API
+    item_origin_date: str       # raw string from API (preferred)
+    listing_date: datetime | None  # parsed datetime: item_origin_date or item_creation_date
     raw: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
-# Mock data (development / CI only)
+# Mock data
 # ---------------------------------------------------------------------------
+
+def _days_ago_iso(n: int) -> str:
+    dt = datetime.now(timezone.utc) - timedelta(days=n)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
 
 _MOCK_LISTINGS: list[dict[str, Any]] = [
     {
@@ -77,39 +86,43 @@ _MOCK_LISTINGS: list[dict[str, Any]] = [
         "price": {"value": "1150.00", "currency": "EUR"},
         "shippingOptions": [{"shippingCost": {"value": "12.00", "currency": "EUR"}}],
         "itemWebUrl": "https://www.ebay.de/itm/mock-001",
-        "image": {"imageUrl": ""},
+        "image": {"imageUrl": "https://i.ebayimg.com/images/mock-001.jpg"},
         "condition": "Used",
-        "itemCreationDate": "",
+        "itemCreationDate": _days_ago_iso(0),   # heute
+        "itemOriginDate": _days_ago_iso(0),
     },
     {
         "itemId": "mock-002",
-        "title": "Umbreon VMAX 215/203 ALT Art PROXY Custom Card Reprint",
-        "price": {"value": "5.99", "currency": "EUR"},
-        "shippingOptions": [{"shippingCost": {"value": "2.00", "currency": "EUR"}}],
-        "itemWebUrl": "https://www.ebay.de/itm/mock-002",
-        "image": {"imageUrl": ""},
-        "condition": "Used",
-        "itemCreationDate": "",
-    },
-    {
-        "itemId": "mock-003",
         "title": "Umbreon VMAX 215/203 PSA 9 Graded Pokemon Card",
         "price": {"value": "620.00", "currency": "EUR"},
         "shippingOptions": [{"shippingCost": {"value": "10.00", "currency": "EUR"}}],
-        "itemWebUrl": "https://www.ebay.de/itm/mock-003",
-        "image": {"imageUrl": ""},
+        "itemWebUrl": "https://www.ebay.de/itm/mock-002",
+        "image": {"imageUrl": "https://i.ebayimg.com/images/mock-002.jpg"},
         "condition": "Used",
-        "itemCreationDate": "",
+        "itemCreationDate": _days_ago_iso(3),   # vor 3 Tagen
+        "itemOriginDate": _days_ago_iso(3),
     },
     {
-        "itemId": "mock-004",
+        "itemId": "mock-003",
         "title": "Umbreon VMAX 215/203 PSA 10 Top Preis sofort kaufen",
         "price": {"value": "1800.00", "currency": "EUR"},
         "shippingOptions": [{"shippingCost": {"value": "15.00", "currency": "EUR"}}],
-        "itemWebUrl": "https://www.ebay.de/itm/mock-004",
-        "image": {"imageUrl": ""},
+        "itemWebUrl": "https://www.ebay.de/itm/mock-003",
+        "image": {"imageUrl": "https://i.ebayimg.com/images/mock-003.jpg"},
         "condition": "Used",
-        "itemCreationDate": "",
+        "itemCreationDate": _days_ago_iso(10),  # vor 10 Tagen
+        "itemOriginDate": _days_ago_iso(10),
+    },
+    {
+        "itemId": "mock-004",
+        "title": "Umbreon VMAX 215/203 ALT Art Englisch NM Ungraded",
+        "price": {"value": "800.00", "currency": "EUR"},
+        "shippingOptions": [{"shippingCost": {"value": "8.00", "currency": "EUR"}}],
+        "itemWebUrl": "https://www.ebay.de/itm/mock-004",
+        "image": {"imageUrl": "https://i.ebayimg.com/images/mock-004.jpg"},
+        "condition": "Like New",
+        "itemCreationDate": _days_ago_iso(20),  # vor 20 Tagen – wird bei lookback=14 rausgefiltert
+        "itemOriginDate": _days_ago_iso(20),
     },
 ]
 
@@ -117,6 +130,19 @@ _MOCK_LISTINGS: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse ISO date string from eBay API into UTC datetime."""
+    if not date_str:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    logger.debug("Could not parse eBay date string: %r", date_str)
+    return None
 
 
 def _parse_listing(raw: dict[str, Any]) -> RawListing:
@@ -129,12 +155,24 @@ def _parse_listing(raw: dict[str, Any]) -> RawListing:
         shipping_raw = shipping_options[0].get("shippingCost", {}).get("value")
         shipping = float(shipping_raw) if shipping_raw is not None else 0.0
     else:
-        shipping = 0.0  # free shipping or unknown; not a scraping assumption
+        shipping = 0.0
 
     url = raw.get("itemWebUrl", "")
     image_url = (raw.get("image") or {}).get("imageUrl", "")
     condition = raw.get("condition", "")
     item_creation_date = raw.get("itemCreationDate", "")
+    item_origin_date = raw.get("itemOriginDate", "")
+
+    # Prefer itemOriginDate (when listing first went live), fall back to itemCreationDate
+    listing_date_str = item_origin_date or item_creation_date
+    listing_date = _parse_date(listing_date_str)
+
+    if listing_date_str and listing_date is None:
+        logger.warning(
+            "listing_date_unknown=true for item %s – could not parse %r",
+            raw.get("itemId"),
+            listing_date_str,
+        )
 
     return RawListing(
         ebay_item_id=str(raw["itemId"]),
@@ -144,9 +182,12 @@ def _parse_listing(raw: dict[str, Any]) -> RawListing:
         total_price=round(price + shipping, 2),
         currency=currency,
         url=url,
+        item_web_url=url,
         image_url=image_url,
         condition=condition,
         item_creation_date=item_creation_date,
+        item_origin_date=item_origin_date,
+        listing_date=listing_date,
         raw=raw,
     )
 
@@ -166,7 +207,7 @@ class EbayClient:
     production mode so failures are loud and early.
     """
 
-    _TOKEN_EXPIRY_BUFFER_SEC = 120  # refresh token 2 minutes before expiry
+    _TOKEN_EXPIRY_BUFFER_SEC = 120
 
     def __init__(self) -> None:
         self._use_mock = config.USE_MOCK_EBAY
@@ -187,10 +228,10 @@ class EbayClient:
             )
 
         self._access_token: str | None = None
-        self._token_expires_at: float = 0.0  # unix timestamp
+        self._token_expires_at: float = 0.0
 
     # ------------------------------------------------------------------
-    # Public
+    # Public: single-page search (existing cron watcher)
     # ------------------------------------------------------------------
 
     def search_new_listings(
@@ -200,23 +241,86 @@ class EbayClient:
         max_price: float | None = None,
         limit: int | None = None,
     ) -> list[RawListing]:
-        """
-        Search eBay for active listings matching *query*, sorted by newest first.
-
-        Args:
-            query:       Search term (from Watchlist.query).
-            marketplace: eBay marketplace ID, e.g. "EBAY_DE".
-            max_price:   Optional upper price bound (item + shipping).
-            limit:       Max results; defaults to config.EBAY_SEARCH_LIMIT.
-
-        Returns:
-            List of RawListing, newest first.
-        """
+        """Fetch one page of the newest listings (used by the regular cron watcher)."""
         effective_limit = limit if limit is not None else config.EBAY_SEARCH_LIMIT
 
         if self._use_mock:
-            return self._fetch_mock(query, max_price, effective_limit)
-        return self._fetch_real(query, marketplace, max_price, effective_limit)
+            return self._fetch_mock(query, max_price, effective_limit, lookback_days=None)
+        return self._fetch_real_page(
+            query, marketplace, max_price, effective_limit, offset=0
+        )
+
+    # ------------------------------------------------------------------
+    # Public: paginated backfill (last N days)
+    # ------------------------------------------------------------------
+
+    def search_recent_listings(
+        self,
+        query: str,
+        marketplace: str = "EBAY_DE",
+        max_price: float | None = None,
+        limit: int = 50,
+        lookback_days: int | None = None,
+        max_pages: int | None = None,
+    ) -> list[RawListing]:
+        """
+        Fetch listings across multiple pages, filtered to the last *lookback_days* days.
+
+        Stops early when:
+        - No more results from API
+        - max_pages reached
+        - All listings on a page are older than lookback_days (when dates are available)
+
+        Deduplicates by ebay_item_id.
+        """
+        effective_lookback = lookback_days if lookback_days is not None else config.EBAY_LOOKBACK_DAYS
+        effective_max_pages = max_pages if max_pages is not None else config.EBAY_MAX_PAGES
+        cutoff = datetime.now(timezone.utc) - timedelta(days=effective_lookback)
+
+        if self._use_mock:
+            return self._fetch_mock(query, max_price, limit, lookback_days=effective_lookback)
+
+        all_listings: dict[str, RawListing] = {}
+
+        for page in range(effective_max_pages):
+            offset = page * limit
+            page_listings = self._fetch_real_page(query, marketplace, max_price, limit, offset)
+
+            if not page_listings:
+                logger.info("Backfill: no more results at offset=%d, stopping.", offset)
+                break
+
+            page_has_recent = False
+            for listing in page_listings:
+                if listing.ebay_item_id in all_listings:
+                    continue
+
+                if listing.listing_date is not None:
+                    if listing.listing_date >= cutoff:
+                        page_has_recent = True
+                        all_listings[listing.ebay_item_id] = listing
+                    # else: too old, skip
+                else:
+                    # No date info – include it (logged in _parse_listing)
+                    page_has_recent = True
+                    all_listings[listing.ebay_item_id] = listing
+
+            if not page_has_recent and page > 0:
+                logger.info(
+                    "Backfill: all listings on page %d are older than %d days, stopping.",
+                    page + 1,
+                    effective_lookback,
+                )
+                break
+
+        result = list(all_listings.values())
+        logger.info(
+            "Backfill search_recent_listings: query=%r → %d listings within %d days",
+            query,
+            len(result),
+            effective_lookback,
+        )
+        return result
 
     # ------------------------------------------------------------------
     # OAuth token management
@@ -229,7 +333,6 @@ class EbayClient:
         )
 
     def _fetch_token(self) -> None:
-        """Fetch a new OAuth2 client-credentials token and cache it."""
         credentials = base64.b64encode(
             f"{config.EBAY_CLIENT_ID}:{config.EBAY_CLIENT_SECRET}".encode()
         ).decode()
@@ -251,7 +354,6 @@ class EbayClient:
             raise EbayAPIError(0, f"Token request failed: {exc}") from exc
 
         if resp.status_code != 200:
-            # Never log the credentials – only status and (sanitised) body
             raise EbayAPIError(resp.status_code, resp.text)
 
         data = resp.json()
@@ -270,23 +372,14 @@ class EbayClient:
     # Real eBay Browse API
     # ------------------------------------------------------------------
 
-    def _fetch_real(
+    def _fetch_real_page(
         self,
         query: str,
         marketplace: str,
         max_price: float | None,
         limit: int,
-    ) -> list[RawListing]:
-        """Call eBay Browse API. Retries once on 401."""
-        return self._do_search(query, marketplace, max_price, limit, retry_on_401=True)
-
-    def _do_search(
-        self,
-        query: str,
-        marketplace: str,
-        max_price: float | None,
-        limit: int,
-        retry_on_401: bool,
+        offset: int,
+        retry_on_401: bool = True,
     ) -> list[RawListing]:
         token = self._ensure_token()
 
@@ -294,10 +387,10 @@ class EbayClient:
             "q": query,
             "sort": "newlyListed",
             "limit": limit,
+            "offset": offset,
             "filter": "buyingOptions:{FIXED_PRICE}",
         }
 
-        # Add price filter via eBay API; fall back to client-side if it errors
         if max_price is not None:
             params["filter"] += f",price:[..{max_price:.2f}],priceCurrency:EUR"
 
@@ -320,7 +413,7 @@ class EbayClient:
             logger.warning("eBay returned 401 – refreshing token and retrying once")
             self._access_token = None
             self._token_expires_at = 0.0
-            return self._do_search(query, marketplace, max_price, limit, retry_on_401=False)
+            return self._fetch_real_page(query, marketplace, max_price, limit, offset, retry_on_401=False)
 
         if resp.status_code == 429:
             logger.error(
@@ -335,15 +428,13 @@ class EbayClient:
         items: list[dict[str, Any]] = resp.json().get("itemSummaries", [])
         listings = [_parse_listing(item) for item in items]
 
-        # Client-side price filter as fallback (in case API filter was ignored)
+        # Client-side price filter fallback
         if max_price is not None:
             listings = [l for l in listings if l.total_price <= max_price]
 
         logger.info(
-            "eBay search: query=%r marketplace=%s → %d results",
-            query,
-            marketplace,
-            len(listings),
+            "eBay page: query=%r marketplace=%s offset=%d → %d results",
+            query, marketplace, offset, len(listings),
         )
         return listings
 
@@ -356,12 +447,25 @@ class EbayClient:
         query: str,
         max_price: float | None,
         limit: int,
+        lookback_days: int | None,
     ) -> list[RawListing]:
-        logger.debug("Mock eBay search query=%r max_price=%s", query, max_price)
+        logger.debug("Mock eBay search query=%r max_price=%s lookback_days=%s", query, max_price, lookback_days)
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=lookback_days)
+            if lookback_days is not None
+            else None
+        )
         results: list[RawListing] = []
         for raw in _MOCK_LISTINGS[:limit]:
             listing = _parse_listing(raw)
             if max_price is not None and listing.total_price > max_price:
                 continue
+            if cutoff is not None and listing.listing_date is not None:
+                if listing.listing_date < cutoff:
+                    logger.debug(
+                        "Mock: skipping %s – listing_date %s older than cutoff %s",
+                        listing.ebay_item_id, listing.listing_date, cutoff,
+                    )
+                    continue
             results.append(listing)
         return results

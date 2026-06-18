@@ -126,7 +126,9 @@ git push -u origin main
 | `EBAY_CLIENT_SECRET` | If real API | – | eBay Developer App Client Secret |
 | `EBAY_MARKETPLACE` | No | `EBAY_DE` | eBay marketplace ID (`EBAY_DE`, `EBAY_US`, …) |
 | `EBAY_ENV` | No | `production` | `production` or `sandbox` |
-| `EBAY_SEARCH_LIMIT` | No | `25` | Listings fetched per search run (max 200) |
+| `EBAY_SEARCH_LIMIT` | No | `50` | Listings fetched per page (max 200) |
+| `EBAY_LOOKBACK_DAYS` | No | `14` | Backfill: how many days back to look |
+| `EBAY_MAX_PAGES` | No | `5` | Backfill: max API pages per search |
 | `TELEGRAM_BOT_TOKEN` | No | – | Telegram Bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | No | – | Your Telegram chat/user ID |
 | `LOG_LEVEL` | No | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
@@ -244,7 +246,41 @@ To use real eBay listings (`USE_MOCK_EBAY=false`), you need a free eBay Develope
 
 ---
 
-## 12. Telegram Bot Setup
+## 12. Normaler Watcher vs. Backfill
+
+### A) Normaler Cron-Watcher (`main.py --once`)
+- Läuft alle 10 Minuten als Render Cron Job
+- Sucht die **neuesten** Listings für jede aktive Watchlist (1 Seite)
+- Klassifiziert und bewertet Deals
+- Sendet Telegram-Alerts bei guten Deals
+- Speichert neue Listings in der Datenbank
+
+### B) Backfill / Letzte 14 Tage laden
+- Wird manuell über das Dashboard ausgelöst
+- Lädt Listings der letzten `EBAY_LOOKBACK_DAYS` Tage via Pagination
+- Speichert neue Listings, überspringt bereits bekannte
+- **Sendet keine Telegram-Alerts**
+- Nützlich beim ersten Start oder nach längerer Pause
+
+**Wo im Dashboard:**
+- Watchlists-Seite → Uhr-Symbol 🕐 pro Watchlist → einzelnen Backfill starten
+- Übersicht → „Alle Watchlists: letzte 14 Tage laden" → globaler Backfill
+
+**Lokaler Test:**
+```bash
+# Einzelne Watchlist testen (Mock-Modus)
+USE_MOCK_EBAY=true python -c "
+from src.ebay_client import EbayClient
+c = EbayClient()
+listings = c.search_recent_listings('Umbreon VMAX', lookback_days=14)
+for l in listings:
+    print(l.ebay_item_id, l.listing_date, l.title[:40])
+"
+```
+
+---
+
+## 13. Telegram Bot Setup
 
 1. Open Telegram and message **@BotFather**.
 2. Send `/newbot` and follow the prompts. Copy the **HTTP API token**.

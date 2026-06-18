@@ -10,12 +10,14 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+import json
+
 from src import config
 from src.database import get_session
 from src.deal_scorer import calculate_deal_score
 from src.ebay_client import EbayClient
 from src.listing_cleaner import clean_and_classify_listing
-from src.models import Watchlist
+from src.models import SeenListing, Watchlist
 from src.web import auth, services
 
 logger = logging.getLogger(__name__)
@@ -369,6 +371,191 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
 
 
 # ---------------------------------------------------------------------------
+# Backfill helpers
+# ---------------------------------------------------------------------------
+
+
+def _run_backfill(
+    wl_data: dict[str, Any],
+    lookback_days: int,
+    db_session: Any,
+) -> dict[str, int]:
+    """
+    Fetch recent listings for one watchlist and persist new ones.
+    Returns a stats dict. Never sends Telegram alerts.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    client = EbayClient()
+    raw_listings = client.search_recent_listings(
+        query=wl_data["query"],
+        marketplace=wl_data["marketplace"],
+        max_price=wl_data["max_price"],
+        lookback_days=lookback_days,
+    )
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+    stats = {
+        "api_total": len(raw_listings),
+        "saved": 0,
+        "skipped_known": 0,
+        "skipped_old": 0,
+        "no_url": 0,
+        "within_lookback": 0,
+    }
+
+    for listing in raw_listings:
+        # Count listings without URL (don't skip, just note)
+        if not listing.url:
+            stats["no_url"] += 1
+
+        # Date check (client already filtered, but double-check)
+        if listing.listing_date is not None and listing.listing_date < cutoff:
+            stats["skipped_old"] += 1
+            continue
+        else:
+            stats["within_lookback"] += 1
+
+        # Dedup
+        exists = (
+            db_session.query(SeenListing)
+            .filter_by(ebay_item_id=listing.ebay_item_id)
+            .first()
+        )
+        if exists:
+            stats["skipped_known"] += 1
+            continue
+
+        # Classify + score (for storage, not for alerting)
+        cl = clean_and_classify_listing(listing.title, target_grade=wl_data.get("target_grade"))
+        deal = calculate_deal_score(
+            listing=listing,
+            target_market_price=wl_data.get("target_market_price"),
+            min_discount_percent=wl_data.get("min_discount_percent", 15.0),
+            classification=cl,
+            target_grade=wl_data.get("target_grade"),
+        )
+
+        seen = SeenListing(
+            ebay_item_id=listing.ebay_item_id,
+            watchlist_id=wl_data["id"],
+            title=listing.title,
+            price=listing.price,
+            shipping=listing.shipping,
+            total_price=listing.total_price,
+            currency=listing.currency,
+            url=listing.url,
+            image_url=listing.image_url,
+            condition=listing.condition,
+            listing_date=listing.listing_date,
+            item_creation_date=listing.item_creation_date,
+            item_origin_date=listing.item_origin_date,
+            raw_payload_json=json.dumps(listing.raw),
+        )
+        db_session.add(seen)
+        stats["saved"] += 1
+
+    db_session.commit()
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Backfill routes
+# ---------------------------------------------------------------------------
+
+
+@router.post("/watchlists/{watchlist_id}/backfill", response_class=HTMLResponse, response_model=None)
+async def watchlist_backfill(request: Request, watchlist_id: int) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    lookback_days = config.EBAY_LOOKBACK_DAYS
+
+    db = get_session()
+    try:
+        wl = services.get_watchlist(db, watchlist_id)
+        if not wl:
+            auth.set_flash(request, "Watchlist nicht gefunden.", "warning")
+            return RedirectResponse(url="/watchlists", status_code=303)
+        wl_data = {
+            "id": wl.id,
+            "name": wl.name,
+            "query": wl.query,
+            "marketplace": wl.marketplace,
+            "max_price": wl.max_price,
+            "target_market_price": wl.target_market_price,
+            "min_discount_percent": wl.min_discount_percent,
+            "target_grade": wl.target_grade,
+        }
+    finally:
+        db.close()
+
+    db2 = get_session()
+    try:
+        stats = _run_backfill(wl_data, lookback_days, db2)
+    except Exception as exc:
+        logger.error("Backfill failed for watchlist %d: %s", watchlist_id, exc)
+        auth.set_flash(request, f"Backfill fehlgeschlagen: {exc}", "danger")
+        return RedirectResponse(url="/watchlists", status_code=303)
+    finally:
+        db2.close()
+
+    return _render(request, "backfill_results.html", {
+        "wl_name": wl_data["name"],
+        "watchlist_id": watchlist_id,
+        "lookback_days": lookback_days,
+        "stats": stats,
+    })
+
+
+@router.post("/backfill/recent", response_class=HTMLResponse, response_model=None)
+async def backfill_all(request: Request) -> HTMLResponse | RedirectResponse:
+    """Global backfill: run for all active watchlists."""
+    if redir := _guard(request):
+        return redir
+
+    lookback_days = config.EBAY_LOOKBACK_DAYS
+
+    db = get_session()
+    try:
+        watchlists = db.query(Watchlist).filter_by(enabled=True).all()
+        wl_list = [
+            {
+                "id": wl.id,
+                "name": wl.name,
+                "query": wl.query,
+                "marketplace": wl.marketplace,
+                "max_price": wl.max_price,
+                "target_market_price": wl.target_market_price,
+                "min_discount_percent": wl.min_discount_percent,
+                "target_grade": wl.target_grade,
+            }
+            for wl in watchlists
+        ]
+    finally:
+        db.close()
+
+    results: list[dict[str, Any]] = []
+    for wl_data in wl_list:
+        db2 = get_session()
+        try:
+            stats = _run_backfill(wl_data, lookback_days, db2)
+            results.append({"name": wl_data["name"], **stats})
+        except Exception as exc:
+            logger.error("Global backfill failed for watchlist %r: %s", wl_data["name"], exc)
+            results.append({"name": wl_data["name"], "error": str(exc)})
+        finally:
+            db2.close()
+
+    return _render(request, "backfill_results.html", {
+        "wl_name": None,
+        "lookback_days": lookback_days,
+        "results": results,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Listings
 # ---------------------------------------------------------------------------
 
@@ -532,6 +719,8 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
         "EBAY_ENV": config.EBAY_ENV,
         "EBAY_MARKETPLACE": config.EBAY_MARKETPLACE,
         "EBAY_SEARCH_LIMIT": str(config.EBAY_SEARCH_LIMIT),
+        "EBAY_LOOKBACK_DAYS": str(config.EBAY_LOOKBACK_DAYS),
+        "EBAY_MAX_PAGES": str(config.EBAY_MAX_PAGES),
         "EBAY_CLIENT_ID": "✓ gesetzt" if config.EBAY_CLIENT_ID else "✗ fehlt",
         "EBAY_CLIENT_SECRET": "✓ gesetzt" if config.EBAY_CLIENT_SECRET else "✗ fehlt",
         # Telegram

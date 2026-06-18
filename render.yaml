@@ -3,7 +3,7 @@ services:
     name: pokemon-card-market-web
     runtime: python
     plan: starter
-    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/add_watchlist.py
+    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/migrate_recent_listing_fields.py && python scripts/add_watchlist.py
     startCommand: uvicorn dashboard_app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
@@ -20,7 +20,11 @@ services:
       - key: EBAY_MARKETPLACE
         value: EBAY_DE
       - key: EBAY_SEARCH_LIMIT
-        value: "25"
+        value: "50"
+      - key: EBAY_LOOKBACK_DAYS
+        value: "14"
+      - key: EBAY_MAX_PAGES
+        value: "5"
       - key: EBAY_CLIENT_ID
         sync: false
       - key: EBAY_CLIENT_SECRET
@@ -33,7 +37,7 @@ services:
     runtime: python
     plan: starter
     schedule: "*/10 * * * *"
-    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/add_watchlist.py
+    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/migrate_recent_listing_fields.py && python scripts/add_watchlist.py
     startCommand: python main.py --once
     envVars:
       - key: DATABASE_URL
@@ -45,7 +49,11 @@ services:
       - key: EBAY_MARKETPLACE
         value: EBAY_DE
       - key: EBAY_SEARCH_LIMIT
-        value: "25"
+        value: "50"
+      - key: EBAY_LOOKBACK_DAYS
+        value: "14"
+      - key: EBAY_MAX_PAGES
+        value: "5"
       - key: EBAY_CLIENT_ID
         sync: false
       - key: EBAY_CLIENT_SECRET

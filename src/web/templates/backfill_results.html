@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Backfill Ergebnis – Card Watcher{% endblock %}
+{% block content %}
+<h2 class="mb-4">
+  <i class="bi bi-clock-history me-2"></i>
+  {% if wl_name %}Backfill: {{ wl_name }}{% else %}Globaler Backfill{% endif %}
+</h2>
+
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-1"></i>
+  Es wurden Listings der letzten <strong>{{ lookback_days }} Tage</strong> abgerufen.
+  Keine Telegram-Alerts wurden gesendet.
+</div>
+
+{% if results %}
+  {# Global backfill: table over all watchlists #}
+  <div class="card">
+    <div class="card-header fw-semibold">Ergebnis pro Watchlist</div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Watchlist</th>
+            <th>API-Ergebnisse</th>
+            <th>Neu gespeichert</th>
+            <th>Bereits bekannt</th>
+            <th>Herausgefiltert (zu alt)</th>
+            <th>Ohne URL</th>
+            <th>Innerhalb {{ lookback_days }} Tage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+          <tr {% if r.get('error') %}class="table-danger"{% endif %}>
+            <td class="fw-semibold">{{ r.name }}</td>
+            {% if r.get('error') %}
+              <td colspan="6" class="text-danger"><i class="bi bi-x-circle me-1"></i>{{ r.error }}</td>
+            {% else %}
+              <td>{{ r.api_total }}</td>
+              <td><span class="badge bg-success">{{ r.saved }}</span></td>
+              <td class="text-muted">{{ r.skipped_known }}</td>
+              <td class="text-muted">{{ r.skipped_old }}</td>
+              <td class="text-muted">{{ r.no_url }}</td>
+              <td><span class="badge bg-info text-dark">{{ r.within_lookback }}</span></td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% elif stats %}
+  {# Single watchlist backfill #}
+  <div class="card mb-4" style="max-width:500px">
+    <div class="card-header fw-semibold">Ergebnis</div>
+    <ul class="list-group list-group-flush">
+      <li class="list-group-item d-flex justify-content-between">
+        <span>API-Ergebnisse</span> <span class="badge bg-secondary">{{ stats.api_total }}</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between">
+        <span>Neu gespeichert</span> <span class="badge bg-success">{{ stats.saved }}</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between">
+        <span>Bereits bekannt (übersprungen)</span> <span class="badge bg-secondary">{{ stats.skipped_known }}</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between">
+        <span>Herausgefiltert (zu alt)</span> <span class="badge bg-warning text-dark">{{ stats.skipped_old }}</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between">
+        <span>Ohne URL</span> <span class="badge bg-secondary">{{ stats.no_url }}</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between">
+        <span>Innerhalb {{ lookback_days }} Tage</span> <span class="badge bg-info text-dark">{{ stats.within_lookback }}</span>
+      </li>
+    </ul>
+  </div>
+{% endif %}
+
+<div class="d-flex gap-2">
+  <a href="/watchlists" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Zurück zu Watchlists
+  </a>
+  <a href="/listings" class="btn btn-outline-primary">
+    <i class="bi bi-card-list me-1"></i>Listings ansehen
+  </a>
+</div>
+{% endblock %}

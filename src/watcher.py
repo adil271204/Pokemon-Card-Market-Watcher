@@ -105,6 +105,11 @@ class Watcher:
             total_price=listing.total_price,
             currency=listing.currency,
             url=listing.url,
+            image_url=listing.image_url,
+            condition=listing.condition,
+            listing_date=listing.listing_date,
+            item_creation_date=listing.item_creation_date,
+            item_origin_date=listing.item_origin_date,
             raw_payload_json=json.dumps(listing.raw),
         )
         session.add(seen)

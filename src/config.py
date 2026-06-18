@@ -23,7 +23,9 @@ EBAY_CLIENT_ID: str | None = os.getenv("EBAY_CLIENT_ID")
 EBAY_CLIENT_SECRET: str | None = os.getenv("EBAY_CLIENT_SECRET")
 EBAY_MARKETPLACE: str = os.getenv("EBAY_MARKETPLACE", "EBAY_DE")
 EBAY_ENV: str = os.getenv("EBAY_ENV", "production").lower()  # "production" or "sandbox"
-EBAY_SEARCH_LIMIT: int = int(os.getenv("EBAY_SEARCH_LIMIT", "25"))
+EBAY_SEARCH_LIMIT: int = int(os.getenv("EBAY_SEARCH_LIMIT", "50"))
+EBAY_LOOKBACK_DAYS: int = int(os.getenv("EBAY_LOOKBACK_DAYS", "14"))
+EBAY_MAX_PAGES: int = int(os.getenv("EBAY_MAX_PAGES", "5"))
 
 # Telegram
 TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
