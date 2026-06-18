@@ -22,7 +22,11 @@ def get_overview_stats(db: Session) -> dict[str, Any]:
 
     total_watchlists = db.query(func.count(Watchlist.id)).scalar() or 0
     active_watchlists = db.query(func.count(Watchlist.id)).filter_by(enabled=True).scalar() or 0
-    total_listings = db.query(func.count(SeenListing.id)).scalar() or 0
+    total_listings = (
+        db.query(func.count(SeenListing.id))
+        .filter(SeenListing.deleted_at.is_(None))
+        .scalar() or 0
+    )
     total_alerts = db.query(func.count(Alert.id)).scalar() or 0
     alerts_24h = (
         db.query(func.count(Alert.id))
@@ -63,6 +67,7 @@ def get_overview_stats(db: Session) -> dict[str, Any]:
 def get_recent_listings(db: Session, limit: int = 10) -> list[SeenListing]:
     return (
         db.query(SeenListing)
+        .filter(SeenListing.deleted_at.is_(None))
         .order_by(SeenListing.first_seen_at.desc())
         .limit(limit)
         .all()
@@ -139,7 +144,7 @@ def get_listings(
     page: int = 1,
     per_page: int = 50,
 ) -> tuple[list[SeenListing], int]:
-    q = db.query(SeenListing)
+    q = db.query(SeenListing).filter(SeenListing.deleted_at.is_(None))
 
     if watchlist_id:
         q = q.filter(SeenListing.watchlist_id == watchlist_id)
@@ -266,16 +271,21 @@ def get_analytics(db: Session) -> dict[str, Any]:
         .all()
     )
 
-    # Listings per watchlist
+    # Listings per watchlist (exclude soft-deleted)
     listings_per_wl = (
         db.query(Watchlist.name, func.count(SeenListing.id).label("cnt"))
         .join(SeenListing, SeenListing.watchlist_id == Watchlist.id, isouter=True)
+        .filter(SeenListing.deleted_at.is_(None))
         .group_by(Watchlist.id, Watchlist.name)
         .order_by(func.count(SeenListing.id).desc())
         .all()
     )
 
-    total_listings = db.query(func.count(SeenListing.id)).scalar() or 0
+    total_listings = (
+        db.query(func.count(SeenListing.id))
+        .filter(SeenListing.deleted_at.is_(None))
+        .scalar() or 0
+    )
     total_alerts = db.query(func.count(Alert.id)).scalar() or 0
     alert_ratio = round(total_alerts / total_listings * 100, 1) if total_listings else 0.0
 
@@ -291,3 +301,45 @@ def get_analytics(db: Session) -> dict[str, Any]:
         "total_alerts": total_alerts,
         "alert_ratio": alert_ratio,
     }
+
+
+# ---------------------------------------------------------------------------
+# Soft delete / restore
+# ---------------------------------------------------------------------------
+
+
+def soft_delete_listing(db: Session, listing_id: int) -> SeenListing | None:
+    """Set deleted_at = now() for one listing. Returns the listing or None."""
+    listing = db.query(SeenListing).filter_by(id=listing_id).first()
+    if listing is None:
+        return None
+    listing.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    return listing
+
+
+def soft_delete_listings(db: Session, listing_ids: list[int]) -> int:
+    """Soft-delete a batch of listings by ID. Returns count of affected rows."""
+    if not listing_ids:
+        return 0
+    now = datetime.now(timezone.utc)
+    updated = (
+        db.query(SeenListing)
+        .filter(SeenListing.id.in_(listing_ids))
+        .filter(SeenListing.deleted_at.is_(None))
+        .all()
+    )
+    for listing in updated:
+        listing.deleted_at = now
+    db.commit()
+    return len(updated)
+
+
+def restore_listing(db: Session, listing_id: int) -> SeenListing | None:
+    """Clear deleted_at so a listing becomes visible again."""
+    listing = db.query(SeenListing).filter_by(id=listing_id).first()
+    if listing is None:
+        return None
+    listing.deleted_at = None
+    db.commit()
+    return listing

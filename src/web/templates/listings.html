@@ -46,6 +46,18 @@
 </div>
 
 {% if items %}
+<!-- Alle sichtbaren ausblenden -->
+<form method="post" action="/listings/delete-visible" style="display:inline;"
+      onsubmit="return confirm('Wirklich alle aktuell angezeigten Listings ausblenden?');" class="mb-3 d-block">
+  {% for l in items %}
+    <input type="hidden" name="listing_ids" value="{{ l.id }}">
+  {% endfor %}
+  <input type="hidden" name="return_url" value="{{ request.url }}">
+  <button type="submit" class="btn btn-sm btn-outline-danger">
+    <i class="bi bi-eye-slash me-1"></i>Alle angezeigten ausblenden ({{ items | length }})
+  </button>
+</form>
+
 <div class="card">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -63,6 +75,7 @@
             <th>Gesamt</th>
             <th>Währung</th>
             <th>Link</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -94,6 +107,15 @@
               {% else %}
                 <span class="badge bg-secondary">Kein Link</span>
               {% endif %}
+            </td>
+            <td>
+              <form method="post" action="/listings/{{ l.id }}/delete" style="display:inline;"
+                    onsubmit="return confirm('Dieses Listing wirklich ausblenden?');">
+                <input type="hidden" name="return_url" value="{{ request.url }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0" title="Ausblenden">
+                  <i class="bi bi-eye-slash"></i>
+                </button>
+              </form>
             </td>
           </tr>
           {% endfor %}

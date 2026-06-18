@@ -556,6 +556,58 @@ async def backfill_all(request: Request) -> HTMLResponse | RedirectResponse:
 
 
 # ---------------------------------------------------------------------------
+# Listings – soft delete
+# ---------------------------------------------------------------------------
+
+
+@router.post("/listings/{listing_id}/delete", response_model=None)
+async def listing_soft_delete(request: Request, listing_id: int) -> RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    db = get_session()
+    try:
+        result = services.soft_delete_listing(db, listing_id)
+        if result:
+            auth.set_flash(request, "Listing ausgeblendet.")
+        else:
+            auth.set_flash(request, "Listing nicht gefunden.", "warning")
+    except Exception as exc:
+        logger.error("Soft delete listing %d failed: %s", listing_id, exc)
+        auth.set_flash(request, f"Fehler: {exc}", "danger")
+    finally:
+        db.close()
+
+    return_url = (await request.form()).get("return_url") or "/listings"
+    return RedirectResponse(url=str(return_url), status_code=303)
+
+
+@router.post("/listings/delete-visible", response_model=None)
+async def listings_delete_visible(request: Request) -> RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    form = await request.form()
+    raw_ids = form.getlist("listing_ids")
+    return_url = form.get("return_url") or "/listings"
+
+    if not raw_ids:
+        auth.set_flash(request, "Keine Listings ausgewählt.", "warning")
+        return RedirectResponse(url=str(return_url), status_code=303)
+
+    listing_ids = [int(i) for i in raw_ids if str(i).isdigit()]
+    db = get_session()
+    try:
+        count = services.soft_delete_listings(db, listing_ids)
+        auth.set_flash(request, f"{count} Listing(s) ausgeblendet.")
+    except Exception as exc:
+        logger.error("Bulk soft delete failed: %s", exc)
+        auth.set_flash(request, f"Fehler: {exc}", "danger")
+    finally:
+        db.close()
+
+    return RedirectResponse(url=str(return_url), status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # Listings
 # ---------------------------------------------------------------------------
 

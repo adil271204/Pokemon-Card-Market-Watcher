@@ -71,6 +71,7 @@ class SeenListing(Base):
     item_origin_date = Column(String(50), nullable=True)
     raw_payload_json = Column(Text, nullable=True)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, default=None)
 
     watchlist = relationship("Watchlist", back_populates="seen_listings")
 

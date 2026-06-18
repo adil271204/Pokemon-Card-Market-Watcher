@@ -315,7 +315,28 @@ future enhancement.
 
 ---
 
-## 13. Future Enhancements
+## 13. Listings ausblenden (Soft Delete)
+
+Listings werden **niemals physisch gelöscht**. Stattdessen wird ein `deleted_at`-Timestamp gesetzt. Ausgeblendete Listings:
+
+- verschwinden aus Overview, Listings-Seite und Analytics
+- bleiben in der Datenbank erhalten (wiederherstellbar)
+- beeinflussen keine Alerts
+
+**Wie ausblenden:**
+- Listings-Seite → Auge-Symbol 🙈 pro Zeile
+- Listings-Seite → „Alle angezeigten ausblenden"-Button
+- Overview → „Alle ausblenden"-Button im Neueste-Listings-Block
+
+**Migration (einmalig bei neuer Instanz):**
+```bash
+python scripts/migrate_seenlisting_deleted_at.py
+```
+Auf Render läuft die Migration automatisch beim Deploy über den `buildCommand`.
+
+---
+
+## 14. Future Enhancements
 
 | Feature | Description |
 |---|---|
