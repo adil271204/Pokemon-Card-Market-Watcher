@@ -360,6 +360,33 @@ Auf Render läuft die Migration automatisch beim Deploy über den `buildCommand`
 
 ---
 
+## 15. Listing-Diagnose
+
+Wenn ein Listing nicht im Dashboard erscheint, hilft die Diagnose-Seite:
+
+**Dashboard → Diagnose** (`/diagnostics`)
+
+### A) Listing prüfen
+1. eBay-URL oder Item-ID eingeben (z. B. `https://www.ebay.de/itm/123456789012`)
+2. Optionale Watchlist auswählen
+3. „Listing prüfen" klicken
+
+**Was gezeigt wird:**
+- Ist das Listing über die eBay Browse API abrufbar? (404 = abgelaufen/entfernt)
+- Ist es in der Datenbank gespeichert? Wurde es ausgeblendet (`deleted_at`)?
+- Filterprüfung in 7 Schritten: Query-Match, Preis, Länderfilter, Kaufoption, Keyword-Cleaner, Grade-Filter, Soft Delete
+- Wenn ausgeblendet: direkte Wiederherstellen-Schaltfläche
+
+> **Hinweis:** Die Diagnose nutzt den **eBay Item Lookup** (`GET /buy/browse/v1/item/{item_id}`) – einen anderen Endpunkt als die normale Suche (`/item_summary/search`). Ein Listing kann im Item Lookup abrufbar sein, aber in der Suche nicht erscheinen (z. B. wegen Query-Relevanz oder Paginierungstiefe).
+
+### B) Watchlist-Suche debuggen
+- Watchlist auswählen → „Suche debuggen"
+- Zeigt alle von der API zurückgegebenen Listings mit Status: Neu / Bereits bekannt / Länder-gesperrt
+
+**Kein Scraping:** Alle Daten kommen ausschließlich von der offiziellen eBay Browse API.
+
+---
+
 ## 14. Future Enhancements
 
 | Feature | Description |

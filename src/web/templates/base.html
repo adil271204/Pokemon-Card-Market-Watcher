@@ -46,6 +46,11 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if '/diagnostics' in request.url.path %}active{% endif %}" href="/diagnostics">
+            <i class="bi bi-stethoscope me-1"></i>Diagnose
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/settings' %}active{% endif %}" href="/settings">
             <i class="bi bi-gear me-1"></i>Einstellungen
           </a>

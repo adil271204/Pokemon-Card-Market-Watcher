@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Diagnose – Card Watcher{% endblock %}
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-stethoscope me-2"></i>Listing-Diagnose</h2>
+
+<div class="row g-4">
+  <!-- Left: Item Lookup form -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-search me-1"></i>Listing prüfen</div>
+      <div class="card-body">
+        <form method="post" action="/diagnostics/listing">
+          <div class="mb-3">
+            <label class="form-label">eBay Artikel-URL oder Item-ID</label>
+            <input type="text" name="item_input" class="form-control"
+              placeholder="https://www.ebay.de/itm/123456789012 oder 123456789012"
+              value="{{ last_input or '' }}" required>
+            <div class="form-text">Numerische ID, vollständige eBay-URL oder v1|…|0 Format</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Gegen Watchlist prüfen <span class="text-muted">(optional)</span></label>
+            <select name="watchlist_id" class="form-select">
+              <option value="">– Keine –</option>
+              {% for wl in watchlists %}
+                <option value="{{ wl.id }}" {% if last_watchlist_id == wl.id | string %}selected{% endif %}>
+                  {{ wl.name }} ({{ wl.query }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-search me-1"></i>Listing prüfen
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Watchlist search debug form -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-bug me-1"></i>Watchlist-Suche debuggen</div>
+      <div class="card-body">
+        <p class="text-muted small">Führt die normale eBay-Suche für eine Watchlist aus und zeigt jeden Schritt: wie viele Listings gefunden, wie viele gefiltert, wie viele bekannt.</p>
+        <form method="post" action="/diagnostics/watchlist-search">
+          <div class="mb-3">
+            <label class="form-label">Watchlist auswählen</label>
+            <select name="watchlist_id" class="form-select" required>
+              <option value="">– Bitte wählen –</option>
+              {% for wl in watchlists %}
+                <option value="{{ wl.id }}" {% if last_watchlist_id == wl.id | string %}selected{% endif %}>
+                  {{ wl.name }} ({{ wl.query }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-outline-secondary">
+            <i class="bi bi-play-circle me-1"></i>Suche debuggen
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Item Lookup Result -->
+<!-- ============================================================ -->
+{% if result %}
+<hr class="my-4">
+<h4><i class="bi bi-receipt me-2"></i>Ergebnis für Item ID: <code>{{ result.item_id }}</code></h4>
+
+{% if result.api_error %}
+<div class="alert alert-danger"><i class="bi bi-x-circle me-1"></i>API-Fehler: {{ result.api_error }}</div>
+{% endif %}
+
+<!-- API found -->
+<div class="row g-3 mb-4">
+  <div class="col-auto">
+    {% if result.api_found %}
+      <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Über eBay API abrufbar</span>
+    {% else %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i>Nicht über eBay Browse API gefunden (404)</span>
+    {% endif %}
+  </div>
+  <div class="col-auto">
+    {% if result.db_found %}
+      {% if result.is_deleted %}
+        <span class="badge bg-warning text-dark fs-6"><i class="bi bi-eye-slash me-1"></i>In DB – ausgeblendet</span>
+      {% else %}
+        <span class="badge bg-info text-dark fs-6"><i class="bi bi-database me-1"></i>In DB gespeichert</span>
+      {% endif %}
+    {% else %}
+      <span class="badge bg-secondary fs-6"><i class="bi bi-database-x me-1"></i>Nicht in DB</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if result.listing %}
+{% set l = result.listing %}
+<div class="card mb-4">
+  <div class="card-header fw-semibold">Listing-Details</div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% if l.image_url %}
+      <div class="col-auto">
+        <img src="{{ l.image_url }}" alt="" style="width:80px;height:80px;object-fit:contain;border-radius:6px;">
+      </div>
+      {% endif %}
+      <div class="col">
+        <p class="fw-semibold mb-1">{{ l.title }}</p>
+        <div class="row g-2 small">
+          <div class="col-auto"><strong>Preis:</strong> {{ l.price }} {{ l.currency }}</div>
+          <div class="col-auto"><strong>Versand:</strong> {{ l.shipping }} {{ l.currency }}</div>
+          <div class="col-auto"><strong>Gesamt:</strong> <span class="fw-bold text-primary">{{ l.total_price }} {{ l.currency }}</span></div>
+          <div class="col-auto"><strong>Land:</strong>
+            {% if l.location_country %}
+              <span class="badge bg-secondary">{{ l.location_country }}</span>
+              {% if l.location_city %}{{ l.location_city }}{% endif %}
+            {% else %}<span class="text-muted">unbekannt</span>{% endif %}
+          </div>
+          <div class="col-auto"><strong>Zustand:</strong> {{ l.condition or '–' }}</div>
+          <div class="col-auto"><strong>Listing-Datum:</strong>
+            {{ l.listing_date.strftime('%d.%m.%Y') if l.listing_date else '–' }}
+          </div>
+          <div class="col-auto"><strong>Kaufoption:</strong>
+            {{ l.raw.get('buyingOptions', ['–']) | join(', ') }}
+          </div>
+        </div>
+        {% if l.url %}
+        <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary mt-2">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Auf eBay öffnen
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- DB Status -->
+{% if result.db_listing %}
+{% set dl = result.db_listing %}
+<div class="card mb-4 {% if result.is_deleted %}border-warning{% else %}border-info{% endif %}">
+  <div class="card-header fw-semibold">Datenbankstatus</div>
+  <ul class="list-group list-group-flush small">
+    <li class="list-group-item d-flex justify-content-between">
+      <span>DB ID</span><code>{{ dl.id }}</code>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Watchlist ID</span><code>{{ dl.watchlist_id }}</code>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Zuerst gesehen</span>
+      <span>{{ dl.first_seen_at.strftime('%d.%m.%Y %H:%M') if dl.first_seen_at else '–' }}</span>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Ausgeblendet (deleted_at)</span>
+      {% if dl.deleted_at %}
+        <span class="text-warning fw-semibold">{{ dl.deleted_at.strftime('%d.%m.%Y %H:%M') }}</span>
+      {% else %}
+        <span class="text-success">Nein</span>
+      {% endif %}
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>URL</span>
+      {% if dl.url %}
+        <a href="{{ dl.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0">eBay-Link</a>
+      {% else %}<span class="text-muted">–</span>{% endif %}
+    </li>
+  </ul>
+  {% if result.is_deleted %}
+  <div class="card-footer">
+    <form method="post" action="/listings/{{ dl.id }}/restore">
+      <input type="hidden" name="return_url" value="/diagnostics">
+      <button type="submit" class="btn btn-warning btn-sm">
+        <i class="bi bi-eye me-1"></i>Listing wiederherstellen
+      </button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Filter Diagnosis -->
+{% if result.diagnosis %}
+{% set diag = result.diagnosis %}
+<div class="card mb-4">
+  <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+    <span>Filterprüfung gegen: <em>{{ result.selected_watchlist.name }}</em></span>
+    {% if diag.matches %}
+      <span class="badge bg-success">Alle Filter bestanden</span>
+    {% else %}
+      <span class="badge bg-danger">Nicht alle Filter bestanden</span>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Filter</th><th>Status</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        {% for c in diag.checks %}
+        <tr class="{% if not c.passed %}table-danger{% endif %}">
+          <td class="fw-semibold small">{{ c.label }}</td>
+          <td>
+            {% if c.passed %}
+              <span class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+            {% else %}
+              <span class="badge bg-danger"><i class="bi bi-x-lg"></i></span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ c.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer bg-light">
+    <strong>Mögliche Ursache:</strong> {{ diag.summary }}
+  </div>
+</div>
+{% elif result.api_found and not result.selected_watchlist %}
+<div class="alert alert-info mt-2">
+  <i class="bi bi-info-circle me-1"></i>
+  Wähle eine Watchlist aus, um die Filterprüfung zu sehen.
+</div>
+{% endif %}
+
+{% endif %}{# end if result #}
+
+<!-- ============================================================ -->
+<!-- Watchlist Search Debug -->
+<!-- ============================================================ -->
+{% if search_debug %}
+<hr class="my-4">
+{% set sd = search_debug %}
+<h4><i class="bi bi-bug me-2"></i>Such-Debug: {{ sd.wl_name }}</h4>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header fw-semibold small">Suchparameter</div>
+      <ul class="list-group list-group-flush small">
+        <li class="list-group-item d-flex justify-content-between"><span>Query</span><code>{{ sd.meta.query }}</code></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Marketplace</span><code>{{ sd.meta.marketplace }}</code></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Max Preis</span><span>{{ sd.meta.max_price ~ ' €' if sd.meta.max_price else '–' }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Limit / Seite</span><span>{{ sd.meta.limit }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Max Seiten</span><span>{{ sd.meta.max_pages }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Lookback Tage</span><span>{{ sd.meta.lookback_days }}</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header fw-semibold small">Ergebnis-Statistik</div>
+      <ul class="list-group list-group-flush small">
+        <li class="list-group-item d-flex justify-content-between"><span>API gesamt</span><span class="badge bg-secondary">{{ sd.stats.api_total }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Land OK</span><span class="badge bg-success">{{ sd.stats.location_ok }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Land gesperrt</span><span class="badge bg-danger">{{ sd.stats.location_blocked }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Neu (würde gespeichert)</span><span class="badge bg-primary">{{ sd.stats.saved }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Bereits bekannt</span><span class="badge bg-info text-dark">{{ sd.stats.known }}</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+{% if sd.meta.get('error') %}
+<div class="alert alert-danger">API-Fehler: {{ sd.meta.error }}</div>
+{% endif %}
+
+{% if sd.rows %}
+<div class="card">
+  <div class="card-header fw-semibold small">Erste {{ sd.rows | length }} Listings</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Titel</th>
+            <th>Land</th>
+            <th>Gesamt</th>
+            <th>Kaufoption</th>
+            <th>Status</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in sd.rows %}
+          <tr class="{% if r.status == 'location_blocked' %}table-danger{% elif r.status == 'bekannt' %}table-secondary{% endif %}">
+            <td class="text-truncate" style="max-width:260px" title="{{ r.title }}">{{ r.title }}</td>
+            <td class="small text-nowrap">
+              <span class="badge bg-secondary">{{ r.location_country }}</span>
+              <span class="text-muted ms-1">{{ r.location_city }}</span>
+            </td>
+            <td class="small">{{ r.total_price }} {{ r.currency }}</td>
+            <td class="small">{{ r.buying_options | join(', ') or '–' }}</td>
+            <td>
+              {% if r.status == 'location_blocked' %}
+                <span class="badge bg-danger">{{ r.loc_reasons | join(', ') }}</span>
+              {% elif r.status == 'bekannt' %}
+                <span class="badge bg-secondary">Bereits bekannt</span>
+              {% else %}
+                <span class="badge bg-success">Neu</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.url %}
+                <a href="{{ r.url }}" target="_blank" class="btn btn-sm btn-outline-primary py-0">
+                  <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+              {% else %}
+                <span class="badge bg-secondary">–</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-4 text-muted">Keine Listings gefunden.</div>
+{% endif %}
+{% endif %}{# end search_debug #}
+{% endblock %}

@@ -256,6 +256,74 @@ class EbayClient:
     # Public: single-page search (existing cron watcher)
     # ------------------------------------------------------------------
 
+    def get_item_by_id(
+        self,
+        item_id: str,
+        marketplace: str = "EBAY_DE",
+    ) -> RawListing | None:
+        """
+        Fetch a single listing by its eBay item ID via the Browse API.
+        Uses GET /buy/browse/v1/item/{item_id}.
+
+        Tries bare numeric ID first, then v1|{item_id}|0 format.
+        Returns None on 404 or if mock mode is active (item not in mock data).
+        """
+        if self._use_mock:
+            for raw in _MOCK_LISTINGS:
+                if raw["itemId"] == item_id:
+                    return _parse_listing(raw)
+            return None
+
+        for candidate in self._item_id_candidates(item_id):
+            result = self._fetch_item(candidate, marketplace)
+            if result is not None:
+                return result
+        return None
+
+    def _item_id_candidates(self, item_id: str) -> list[str]:
+        """Return the ID forms to try, in order."""
+        if item_id.startswith("v1|"):
+            return [item_id]
+        return [item_id, f"v1|{item_id}|0"]
+
+    def _fetch_item(self, item_id: str, marketplace: str) -> RawListing | None:
+        token = self._ensure_token()
+        try:
+            resp = requests.get(
+                f"{config.EBAY_API_BASE_URL}/buy/browse/v1/item/{item_id}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-EBAY-C-MARKETPLACE-ID": marketplace,
+                    "Accept": "application/json",
+                },
+                timeout=15,
+            )
+        except requests.RequestException as exc:
+            raise EbayAPIError(0, f"Network error: {exc}") from exc
+
+        if resp.status_code == 404:
+            return None
+        if resp.status_code == 401:
+            # Refresh and retry once
+            self._access_token = None
+            self._token_expires_at = 0.0
+            token = self._ensure_token()
+            resp = requests.get(
+                f"{config.EBAY_API_BASE_URL}/buy/browse/v1/item/{item_id}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-EBAY-C-MARKETPLACE-ID": marketplace,
+                    "Accept": "application/json",
+                },
+                timeout=15,
+            )
+            if resp.status_code == 404:
+                return None
+        if resp.status_code >= 400:
+            raise EbayAPIError(resp.status_code, resp.text)
+
+        return _parse_listing(resp.json())
+
     def search_new_listings(
         self,
         query: str,

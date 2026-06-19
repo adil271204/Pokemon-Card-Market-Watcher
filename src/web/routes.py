@@ -15,6 +15,7 @@ import json
 from src import config
 from src.database import get_session
 from src.deal_scorer import calculate_deal_score
+from src.diagnostics import diagnose_listing_against_watchlist, extract_ebay_item_id
 from src.ebay_client import EbayClient
 from src.listing_cleaner import clean_and_classify_listing
 from src.location_filter import is_allowed_location
@@ -751,6 +752,227 @@ async def alerts(request: Request) -> HTMLResponse | RedirectResponse:
             "date_from": params.get("date_from", ""),
             "date_to": params.get("date_to", ""),
         },
+    })
+
+
+# ---------------------------------------------------------------------------
+# Restore soft-deleted listing
+# ---------------------------------------------------------------------------
+
+
+@router.post("/listings/{listing_id}/restore", response_model=None)
+async def listing_restore(request: Request, listing_id: int) -> RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    db = get_session()
+    try:
+        result = services.restore_listing(db, listing_id)
+        if result:
+            auth.set_flash(request, "Listing wiederhergestellt.")
+        else:
+            auth.set_flash(request, "Listing nicht gefunden.", "warning")
+    finally:
+        db.close()
+    form = await request.form()
+    return_url = form.get("return_url") or "/listings"
+    return RedirectResponse(url=str(return_url), status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/diagnostics", response_class=HTMLResponse, response_model=None)
+async def diagnostics_page(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    db = get_session()
+    try:
+        watchlists_all = services.get_all_watchlists(db)
+    finally:
+        db.close()
+    return _render(request, "diagnostics.html", {
+        "watchlists": watchlists_all,
+        "result": None,
+    })
+
+
+@router.post("/diagnostics/listing", response_class=HTMLResponse, response_model=None)
+async def diagnostics_listing(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    raw_input = (form.get("item_input") or "").strip()
+    watchlist_id = form.get("watchlist_id") or None
+
+    db = get_session()
+    try:
+        watchlists_all = services.get_all_watchlists(db)
+        selected_wl = None
+        if watchlist_id:
+            selected_wl = services.get_watchlist(db, int(watchlist_id))
+
+        if not raw_input:
+            auth.set_flash(request, "Bitte eine eBay-URL oder Item-ID eingeben.", "warning")
+            return _render(request, "diagnostics.html", {
+                "watchlists": watchlists_all, "result": None,
+            })
+
+        item_id = extract_ebay_item_id(raw_input)
+        result: dict[str, Any] = {"item_id": item_id, "raw_input": raw_input}
+
+        # 1 – API lookup
+        try:
+            client = EbayClient()
+            listing = client.get_item_by_id(item_id, marketplace=config.EBAY_MARKETPLACE)
+        except Exception as exc:
+            result["api_error"] = str(exc)
+            listing = None
+
+        result["api_found"] = listing is not None
+        result["listing"] = listing
+
+        # 2 – DB check (search by ebay_item_id AND by numeric part)
+        numeric_id = item_id.split("|")[1] if "|" in item_id else item_id
+        db_listing = (
+            db.query(SeenListing)
+            .filter(
+                (SeenListing.ebay_item_id == item_id) |
+                (SeenListing.ebay_item_id == numeric_id)
+            )
+            .first()
+        )
+        result["db_listing"] = db_listing
+        result["db_found"] = db_listing is not None
+        result["is_deleted"] = db_listing is not None and db_listing.deleted_at is not None
+
+        # 3 – Filter diagnosis (only if API found and watchlist selected)
+        if listing and selected_wl:
+            result["diagnosis"] = diagnose_listing_against_watchlist(
+                listing, selected_wl, db_listing
+            )
+        result["selected_watchlist"] = selected_wl
+
+    finally:
+        db.close()
+
+    return _render(request, "diagnostics.html", {
+        "watchlists": watchlists_all,
+        "result": result,
+        "last_input": raw_input,
+        "last_watchlist_id": watchlist_id or "",
+    })
+
+
+@router.post("/diagnostics/watchlist-search", response_class=HTMLResponse, response_model=None)
+async def diagnostics_watchlist_search(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    watchlist_id = form.get("watchlist_id") or None
+
+    db = get_session()
+    try:
+        watchlists_all = services.get_all_watchlists(db)
+        if not watchlist_id:
+            auth.set_flash(request, "Bitte eine Watchlist auswählen.", "warning")
+            return _render(request, "diagnostics.html", {
+                "watchlists": watchlists_all, "result": None,
+            })
+        wl = services.get_watchlist(db, int(watchlist_id))
+        if not wl:
+            auth.set_flash(request, "Watchlist nicht gefunden.", "warning")
+            return _render(request, "diagnostics.html", {
+                "watchlists": watchlists_all, "result": None,
+            })
+        wl_data = {
+            "id": wl.id, "name": wl.name, "query": wl.query,
+            "marketplace": wl.marketplace, "max_price": wl.max_price,
+            "target_market_price": wl.target_market_price,
+            "min_discount_percent": wl.min_discount_percent,
+            "target_grade": wl.target_grade,
+        }
+    finally:
+        db.close()
+
+    debug_rows: list[dict[str, Any]] = []
+    search_meta: dict[str, Any] = {
+        "query": wl_data["query"],
+        "marketplace": wl_data["marketplace"],
+        "max_price": wl_data["max_price"],
+        "limit": config.EBAY_SEARCH_LIMIT,
+        "max_pages": config.EBAY_MAX_PAGES,
+        "lookback_days": config.EBAY_LOOKBACK_DAYS,
+    }
+    stats = {"api_total": 0, "location_ok": 0, "location_blocked": 0, "saved": 0, "known": 0}
+
+    try:
+        client = EbayClient()
+        raw_listings = client.search_recent_listings(
+            query=wl_data["query"],
+            marketplace=wl_data["marketplace"],
+            max_price=wl_data["max_price"],
+            lookback_days=config.EBAY_LOOKBACK_DAYS,
+        )
+        stats["api_total"] = len(raw_listings)
+
+        db2 = get_session()
+        try:
+            for listing in raw_listings:
+                loc_ok, loc_reasons = is_allowed_location(
+                    listing.location_country,
+                    config.EBAY_ALLOWED_COUNTRIES,
+                    config.EBAY_EXCLUDED_COUNTRIES,
+                    config.EBAY_ALLOW_UNKNOWN_LOCATION,
+                )
+                if loc_ok:
+                    stats["location_ok"] += 1
+                else:
+                    stats["location_blocked"] += 1
+
+                exists = db2.query(SeenListing).filter_by(
+                    ebay_item_id=listing.ebay_item_id
+                ).first()
+                if exists:
+                    status = "bekannt"
+                    stats["known"] += 1
+                elif not loc_ok:
+                    status = "location_blocked"
+                else:
+                    status = "neu"
+                    stats["saved"] += 1
+
+                debug_rows.append({
+                    "title": listing.title,
+                    "price": listing.price,
+                    "shipping": listing.shipping,
+                    "total_price": listing.total_price,
+                    "currency": listing.currency,
+                    "location_country": listing.location_country or "–",
+                    "location_city": listing.location_city or "–",
+                    "url": listing.url,
+                    "status": status,
+                    "loc_reasons": loc_reasons,
+                    "buying_options": listing.raw.get("buyingOptions") or [],
+                })
+        finally:
+            db2.close()
+    except Exception as exc:
+        search_meta["error"] = str(exc)
+
+    return _render(request, "diagnostics.html", {
+        "watchlists": watchlists_all,
+        "result": None,
+        "search_debug": {
+            "meta": search_meta,
+            "stats": stats,
+            "rows": debug_rows[:50],
+            "wl_name": wl_data["name"],
+        },
+        "last_watchlist_id": watchlist_id or "",
     })
 
 
