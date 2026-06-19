@@ -456,7 +456,62 @@ Pro Karte berechnet das System:
 
 ---
 
-## 16. Listing-Diagnose
+## 16. Kartenlisten-Import per URL
+
+Unter **Sets → URL-Import** (`/sets/import-url`) kannst du eine externe Kartenlisten-Seite per URL importieren.
+
+### Ablauf
+
+1. `/sets/import-url` öffnen
+2. URL der Kartenliste einfügen (z. B. `https://www.cardsrfun.de/collections/sv151`)
+3. Optional: Set Name, Set Code, Sprache, Quellenname eingeben
+4. „Kartenliste prüfen" klicken → Vorschau erscheint
+5. Karten einzeln ab- oder anwählen, Felder direkt editieren
+6. „Ausgewählte Karten importieren" klicken
+7. Set scannen unter `/sets/{id}`
+
+### Wie der Parser funktioniert
+
+Das System versucht nacheinander:
+1. JSON-LD / eingebettete JSON-Daten (`script[type="application/ld+json"]`, `__NEXT_DATA__`)
+2. Strukturierte HTML-Tabellen (mit Header-Erkennung für Name, Nummer, Rarität)
+3. HTML-Listen (`<ul>`, `<ol>`)
+4. Grid-/Card-Elemente (`class` mit „card", „item", „product")
+5. Text-basierter Regex-Fallback (scannt alle sichtbaren Zeilen nach Mustern wie `001/165`)
+
+Jeder erkannten Karte wird ein Confidence-Wert (0–100 %) zugewiesen.
+
+### Unterstützte Seiten
+
+Spezialisierte Parser vorhanden für:
+- **cardsrfun.de** – Tabellen und Card-Elemente
+- **bulbapedia.bulbagarden.net** – Wikitable
+- **serebii.net** – Tabellen
+- **pkmncards.com** – Kartenverlinkungen
+
+Der generische Parser funktioniert auf vielen weiteren Seiten, sofern die Karten-nummern (`001/165`) im HTML-Text enthalten sind.
+
+### Einschränkungen
+
+- **JavaScript-gerenderte Seiten (SPA)** können nicht gelesen werden — der Parser sieht nur das initiale HTML.
+- **Login-geschützte Seiten** werden nicht unterstützt (kein Login-Bypass).
+- **Captcha-Seiten** werden abgelehnt.
+- **eBay wird nicht gescraped.** Dieser Import gilt ausschließlich für externe Kartenlisten-Seiten. eBay wird weiterhin nur über die offizielle Browse API abgefragt.
+- Der **CSV-Import** bleibt der zuverlässigste Weg, wenn der URL-Parser scheitert.
+
+### Sicherheit (SSRF-Schutz)
+
+- Nur `http://` und `https://` erlaubt
+- Keine privaten IP-Adressen (10.x, 172.16.x, 192.168.x, 127.x, 169.254.x)
+- Keine `localhost`-Anfragen
+- Kein Zugriff auf Cloud-Metadaten-Endpunkte
+- Maximale HTML-Größe: 5 MB
+- Timeout: 15 Sekunden
+- Single GET-Request — kein aggressives Crawling
+
+---
+
+## 17. Listing-Diagnose
 
 Wenn ein Listing nicht im Dashboard erscheint, hilft die Diagnose-Seite:
 

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Kartenliste per URL importieren – Card Watcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-link-45deg me-2"></i>Kartenliste per URL importieren</h2>
+  <div class="d-flex gap-2">
+    <a href="/sets/import" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-filetype-csv me-1"></i>CSV-Import
+    </a>
+    <a href="/sets" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Sets
+    </a>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <i class="bi bi-info-circle me-1"></i>
+  Das System versucht, Kartendaten aus einer externen Webseite zu extrahieren.
+  Es wird nur <strong>ein einzelner GET-Request</strong> gesendet.
+  Kein Login, kein Scraping, kein eBay.
+  <br>
+  Wenn die Seite nicht kompatibel ist, erscheint eine verständliche Fehlermeldung und du kannst den
+  <a href="/sets/import">CSV-Import</a> nutzen.
+</div>
+
+{% if error %}
+<div class="alert alert-danger">
+  <i class="bi bi-x-circle me-1"></i><strong>Fehler:</strong> {{ error }}
+  <hr class="my-2">
+  <span class="small">Tipp: <a href="/sets/import">CSV-Import</a> als zuverlässige Alternative nutzen.</span>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header fw-semibold">URL eingeben</div>
+  <div class="card-body">
+    <form method="post" action="/sets/import-url/preview">
+      <div class="mb-3">
+        <label class="form-label">URL der Kartenliste <span class="text-danger">*</span></label>
+        <input type="url" name="url" class="form-control"
+          placeholder="https://www.cardsrfun.de/collections/sv151"
+          value="{{ form_data.url if form_data else '' }}" required>
+        <div class="form-text">Nur http/https erlaubt. Keine Login-Seiten, keine privaten Netzwerke.</div>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">Set Name <span class="text-muted">(optional, überschreibt erkannten Namen)</span></label>
+          <input type="text" name="set_name" class="form-control"
+            placeholder="Scarlet & Violet 151"
+            value="{{ form_data.set_name if form_data else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Set Code <span class="text-muted">(optional)</span></label>
+          <input type="text" name="set_code" class="form-control"
+            placeholder="sv151"
+            value="{{ form_data.set_code if form_data else '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Sprache</label>
+          <select name="language" class="form-select">
+            {% for lang in ["EN", "DE", "FR", "ES", "IT", "PT", "JA", "KO", "ZH"] %}
+            <option value="{{ lang }}" {% if (form_data.language if form_data else 'EN') == lang %}selected{% endif %}>
+              {{ lang }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Quellenname <span class="text-muted">(optional)</span></label>
+          <input type="text" name="source_name" class="form-control"
+            placeholder="cardsrfun.de"
+            value="{{ form_data.source_name if form_data else '' }}">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-search me-1"></i>Kartenliste prüfen
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header fw-semibold small">Hinweise zur URL-Kompatibilität</div>
+  <div class="card-body small">
+    <ul class="mb-0">
+      <li>Das System erkennt Karten anhand von Nummern wie <code>001/165</code> im Seitentext.</li>
+      <li>Seiten mit strukturierten Tabellen oder Listen werden am besten erkannt.</li>
+      <li>JavaScript-gerenderte Seiten (SPA) können nicht gelesen werden.</li>
+      <li>Kein eBay-Scraping – diese Funktion betrifft nur externe Kartenlisten-Seiten.</li>
+      <li>Wenn keine Karten erkannt werden: <a href="/sets/import">CSV-Import</a> ist immer verfügbar.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

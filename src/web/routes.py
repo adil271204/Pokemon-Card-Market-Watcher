@@ -23,6 +23,7 @@ import csv
 import io
 
 from src.models import PokemonCard, PokemonSet, SeenListing, SetScan, SetScanResult, Watchlist
+from src.cardlist_importer import fetch_cardlist_url, parse_cardlist_html
 from src.set_scanner import build_card_queries, calculate_card_opportunity, run_set_scan
 from src.web import auth, services
 
@@ -1450,3 +1451,182 @@ async def card_analysis(request: Request, set_id: int, card_id: int) -> HTMLResp
             "psa9_prob": config.GRADING_PSA9_PROBABILITY,
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# URL Card List Import
+# ---------------------------------------------------------------------------
+
+
+
+@router.get("/sets/import-url", response_class=HTMLResponse, response_model=None)
+async def sets_import_url_form(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    return _render(request, "set_import_url.html", {})
+
+
+@router.post("/sets/import-url/preview", response_model=None)
+async def sets_import_url_preview(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    url = (form.get("url") or "").strip()
+    set_name_override = (form.get("set_name") or "").strip()
+    set_code_override = (form.get("set_code") or "").strip().lower()
+    language = (form.get("language") or "EN").strip().upper()
+    source_name = (form.get("source_name") or "").strip()
+
+    if not url:
+        auth.set_flash(request, "Bitte eine URL eingeben.", "danger")
+        return _render(request, "set_import_url.html", {
+            "form_data": dict(form),
+        })
+
+    try:
+        html = fetch_cardlist_url(url)
+    except ValueError as exc:
+        return _render(request, "set_import_url.html", {
+            "error": str(exc),
+            "form_data": dict(form),
+        })
+
+    try:
+        result = parse_cardlist_html(html, url)
+    except Exception as exc:
+        logger.error("parse_cardlist_html failed: %s", exc, exc_info=True)
+        return _render(request, "set_import_url.html", {
+            "error": f"Parser-Fehler: {exc}",
+            "form_data": dict(form),
+        })
+
+    # Apply overrides
+    if set_name_override:
+        result["set_name_detected"] = set_name_override
+    if set_code_override:
+        result["set_code_detected"] = set_code_override
+
+    # Apply language to all cards
+    for c in result["cards"]:
+        c["language"] = language
+
+    return _render(request, "set_import_url_preview.html", {
+        "result": result,
+        "url": url,
+        "set_name": result["set_name_detected"],
+        "set_code": result["set_code_detected"],
+        "language": language,
+        "source_name": source_name,
+    })
+
+
+@router.post("/sets/import-url/confirm", response_model=None)
+async def sets_import_url_confirm(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    url = (form.get("url") or "").strip()
+    set_name = (form.get("set_name") or "").strip()
+    set_code = (form.get("set_code") or "").strip().lower()
+    language = (form.get("language") or "EN").strip().upper()
+    source_name = (form.get("source_name") or "").strip()
+
+    if not set_name or not set_code:
+        auth.set_flash(request, "Set Name und Set Code sind Pflichtfelder.", "danger")
+        return RedirectResponse(url="/sets/import-url", status_code=303)
+
+    # Collect selected cards from form
+    # Each selected card sends: card_name_N, card_number_N, rarity_N, variant_N, confidence_N, raw_text_N
+    selected_indices = [
+        k[len("selected_"):] for k in form.keys() if k.startswith("selected_")
+    ]
+
+    cards_to_import: list[dict] = []
+    for idx in selected_indices:
+        card_name = (form.get(f"card_name_{idx}") or "").strip()
+        card_number = (form.get(f"card_number_{idx}") or "").strip()
+        rarity = (form.get(f"rarity_{idx}") or "").strip()
+        variant = (form.get(f"variant_{idx}") or "normal").strip()
+        confidence = float(form.get(f"confidence_{idx}") or 0.5)
+        raw_text = (form.get(f"raw_text_{idx}") or "").strip()
+        if card_name and card_number:
+            cards_to_import.append({
+                "card_name": card_name,
+                "card_number": card_number,
+                "rarity": rarity,
+                "variant": variant,
+                "language": language,
+                "confidence": confidence,
+                "raw_text": raw_text,
+            })
+
+    if not cards_to_import:
+        auth.set_flash(request, "Keine Karten zum Importieren ausgewählt.", "warning")
+        return RedirectResponse(url="/sets/import-url", status_code=303)
+
+    cards_created = 0
+    cards_skipped = 0
+    cards_updated = 0
+
+    with get_session() as db:
+        # Upsert set
+        pset = db.query(PokemonSet).filter_by(code=set_code, language=language).first()
+        if not pset:
+            pset = PokemonSet(
+                name=set_name,
+                code=set_code,
+                language=language,
+                source_url=url or None,
+                source_name=source_name or None,
+            )
+            db.add(pset)
+            db.flush()
+        else:
+            if url and not pset.source_url:
+                pset.source_url = url
+            if source_name and not pset.source_name:
+                pset.source_name = source_name
+
+        for c in cards_to_import:
+            existing = db.query(PokemonCard).filter_by(
+                set_id=pset.id,
+                card_number=c["card_number"],
+                language=language,
+            ).first()
+
+            if existing:
+                # Update name if it changed
+                if existing.name != c["card_name"]:
+                    existing.name = c["card_name"]
+                    existing.rarity = c["rarity"] or existing.rarity
+                    existing.source_raw_text = c["raw_text"] or existing.source_raw_text
+                    existing.import_confidence = c["confidence"]
+                    cards_updated += 1
+                else:
+                    cards_skipped += 1
+            else:
+                card = PokemonCard(
+                    set_id=pset.id,
+                    name=c["card_name"],
+                    card_number=c["card_number"],
+                    rarity=c["rarity"] or None,
+                    language=language,
+                    variant=c["variant"] or "normal",
+                    is_secret=_is_secret_card(c["card_number"]),
+                    source_raw_text=c["raw_text"] or None,
+                    import_confidence=c["confidence"],
+                )
+                db.add(card)
+                cards_created += 1
+
+        db.commit()
+        set_id = pset.id
+
+    auth.set_flash(
+        request,
+        f"Import abgeschlossen: {cards_created} neu, {cards_updated} aktualisiert, {cards_skipped} übersprungen.",
+        "success",
+    )
+    return RedirectResponse(url=f"/sets/{set_id}", status_code=303)

@@ -97,6 +97,9 @@ class PokemonSet(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
+    source_url = Column(Text, nullable=True)
+    source_name = Column(String(100), nullable=True)
+
     cards = relationship("PokemonCard", back_populates="pokemon_set", cascade="all, delete-orphan")
     scans = relationship("SetScan", back_populates="pokemon_set", cascade="all, delete-orphan")
 
@@ -118,6 +121,8 @@ class PokemonCard(Base):
     variant = Column(String(100), nullable=True)
     is_secret = Column(Boolean, nullable=False, default=False)
     search_name = Column(String(500), nullable=True)
+    source_raw_text = Column(Text, nullable=True)
+    import_confidence = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
