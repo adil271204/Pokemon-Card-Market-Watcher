@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}CSV-Import – Card Watcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-upload me-2"></i>Set-Karten per CSV importieren</h2>
+  <a href="/sets" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Zurück
+  </a>
+</div>
+
+<div class="row g-4">
+  <div class="col-md-7">
+    <div class="card">
+      <div class="card-header fw-semibold">CSV hochladen</div>
+      <div class="card-body">
+        <form method="post" action="/sets/import" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label">CSV-Datei</label>
+            <input type="file" name="csv_file" class="form-control" accept=".csv,text/csv" required>
+            <div class="form-text">
+              UTF-8 oder Latin-1 Kodierung, Komma-getrennt.
+              <a href="/static/examples/set_import_template.csv" download>Beispiel herunterladen</a>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i>Importieren
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-header fw-semibold">CSV-Format</div>
+      <div class="card-body small">
+        <p>Pflichtfelder: <code>set_name, set_code, language, card_name, card_number</code></p>
+        <p>Optionale Felder: <code>rarity, variant</code></p>
+        <pre class="bg-light p-2 rounded" style="font-size:0.75rem">set_name,set_code,language,card_name,card_number,rarity,variant
+Scarlet &amp; Violet 151,sv151,EN,Charizard ex,006/165,Double Rare,normal
+Scarlet &amp; Violet 151,sv151,EN,Mew ex,193/165,Special Illustration Rare,normal</pre>
+        <ul class="mb-0">
+          <li>Duplikate (selber set_code + language + card_number) werden übersprungen</li>
+          <li>Mehrere Sets in einer Datei möglich</li>
+          <li>Geheime Karten (Nummer &gt; Set-Total) werden automatisch erkannt</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

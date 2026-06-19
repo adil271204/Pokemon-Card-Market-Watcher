@@ -84,6 +84,103 @@ class SeenListing(Base):
         return f"<SeenListing ebay_item_id={self.ebay_item_id!r}>"
 
 
+class PokemonSet(Base):
+    """A Pokémon card set (e.g. 'Scarlet & Violet 151')."""
+
+    __tablename__ = "pokemon_sets"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    code = Column(String(50), nullable=False)
+    language = Column(String(10), nullable=False, default="EN")
+    total_cards = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    cards = relationship("PokemonCard", back_populates="pokemon_set", cascade="all, delete-orphan")
+    scans = relationship("SetScan", back_populates="pokemon_set", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<PokemonSet id={self.id} code={self.code!r}>"
+
+
+class PokemonCard(Base):
+    """A single card within a Pokémon set."""
+
+    __tablename__ = "pokemon_cards"
+
+    id = Column(Integer, primary_key=True)
+    set_id = Column(Integer, ForeignKey("pokemon_sets.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    card_number = Column(String(20), nullable=False)
+    rarity = Column(String(100), nullable=True)
+    language = Column(String(10), nullable=False, default="EN")
+    variant = Column(String(100), nullable=True)
+    is_secret = Column(Boolean, nullable=False, default=False)
+    search_name = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    pokemon_set = relationship("PokemonSet", back_populates="cards")
+    scan_results = relationship("SetScanResult", back_populates="card", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<PokemonCard id={self.id} name={self.name!r} num={self.card_number!r}>"
+
+
+class SetScan(Base):
+    """A scan run for an entire set."""
+
+    __tablename__ = "set_scans"
+
+    id = Column(Integer, primary_key=True)
+    set_id = Column(Integer, ForeignKey("pokemon_sets.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="pending")  # pending/running/done/error
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    cards_scanned = Column(Integer, nullable=False, default=0)
+    listings_found = Column(Integer, nullable=False, default=0)
+    listings_saved = Column(Integer, nullable=False, default=0)
+    errors_json = Column(Text, nullable=True)
+
+    pokemon_set = relationship("PokemonSet", back_populates="scans")
+    results = relationship("SetScanResult", back_populates="scan", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<SetScan id={self.id} set_id={self.set_id} status={self.status!r}>"
+
+
+class SetScanResult(Base):
+    """Per-card result from a set scan."""
+
+    __tablename__ = "set_scan_results"
+
+    id = Column(Integer, primary_key=True)
+    set_scan_id = Column(Integer, ForeignKey("set_scans.id"), nullable=False)
+    pokemon_card_id = Column(Integer, ForeignKey("pokemon_cards.id"), nullable=False)
+    raw_median_price = Column(Float, nullable=True)
+    raw_min_price = Column(Float, nullable=True)
+    raw_listing_count = Column(Integer, nullable=False, default=0)
+    psa9_median_price = Column(Float, nullable=True)
+    psa9_listing_count = Column(Integer, nullable=False, default=0)
+    psa10_median_price = Column(Float, nullable=True)
+    psa10_listing_count = Column(Integer, nullable=False, default=0)
+    psa10_multiplier = Column(Float, nullable=True)
+    psa9_multiplier = Column(Float, nullable=True)
+    expected_profit = Column(Float, nullable=True)
+    roi_percent = Column(Float, nullable=True)
+    score = Column(Float, nullable=False, default=0.0)
+    rating = Column(String(50), nullable=False, default="Zu wenig Daten")
+    reasons_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+    scan = relationship("SetScan", back_populates="results")
+    card = relationship("PokemonCard", back_populates="scan_results")
+
+    def __repr__(self) -> str:
+        return f"<SetScanResult id={self.id} card_id={self.pokemon_card_id} rating={self.rating!r}>"
+
+
 class Alert(Base):
     """A deal alert that was (or should have been) sent via Telegram."""
 

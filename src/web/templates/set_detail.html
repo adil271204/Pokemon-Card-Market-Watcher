@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ set.name }} – Card Watcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="mb-0"><i class="bi bi-collection me-2"></i>{{ set.name }}</h2>
+    <span class="text-muted small"><code>{{ set.code }}</code> · {{ set.language }} · {{ set.total_cards }} Karten</span>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/sets" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Sets
+    </a>
+    <a href="/sets/{{ set.id }}/scan-results" class="btn btn-outline-info btn-sm">
+      <i class="bi bi-bar-chart-line me-1"></i>Ergebnisse
+    </a>
+    <form method="post" action="/sets/{{ set.id }}/scan" onsubmit="return confirm('Set-Scan starten? Das kann bei vielen Karten einige Minuten dauern.')">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-play-circle me-1"></i>Set scannen
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-warning small mb-4">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>Hinweis:</strong> Der Scan analysiert aktive eBay-Listings, <strong>keine Verkaufspreise</strong>.
+  Aktive Listings können überhöht bepreist sein. Kein Scraping – ausschließlich eBay Browse API.
+</div>
+
+{% if last_scan %}
+<div class="card mb-4">
+  <div class="card-header fw-semibold small">Letzter Scan</div>
+  <ul class="list-group list-group-flush small">
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Status</span>
+      <span class="badge {% if last_scan.status == 'done' %}bg-success{% elif last_scan.status == 'running' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+        {{ last_scan.status }}
+      </span>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Gestartet</span>
+      <span>{{ last_scan.started_at.strftime('%d.%m.%Y %H:%M') if last_scan.started_at else '–' }}</span>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Karten gescannt</span><span>{{ last_scan.cards_scanned }}</span>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Listings gefunden</span><span>{{ last_scan.listings_found }}</span>
+    </li>
+    <li class="list-group-item d-flex justify-content-between">
+      <span>Nach Filter</span><span>{{ last_scan.listings_saved }}</span>
+    </li>
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header fw-semibold">
+    Karten ({{ cards | length }})
+  </div>
+  {% if cards %}
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Rarität</th>
+            <th>Variante</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cards %}
+          <tr>
+            <td><code class="small">{{ c.card_number }}</code>{% if c.is_secret %} <span class="badge bg-warning text-dark">Secret</span>{% endif %}</td>
+            <td>{{ c.name }}</td>
+            <td class="small text-muted">{{ c.rarity or '–' }}</td>
+            <td class="small text-muted">{{ c.variant or '–' }}</td>
+            <td>
+              <a href="/sets/{{ set.id }}/cards/{{ c.id }}/analysis" class="btn btn-sm btn-outline-primary py-0">
+                <i class="bi bi-search"></i> Analyse
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card-body text-muted">Keine Karten importiert.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Scan-Ergebnisse – {{ set.name }} – Card Watcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i>Scan-Ergebnisse</h2>
+    <span class="text-muted small">{{ set.name }}</span>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/sets/{{ set.id }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Set
+    </a>
+    <form method="post" action="/sets/{{ set.id }}/scan" onsubmit="return confirm('Neuen Scan starten?')">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-play-circle me-1"></i>Neuer Scan
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-info small mb-3">
+  <i class="bi bi-info-circle me-1"></i>
+  <strong>Hinweis:</strong> Aktive eBay-Listings, keine Verkaufspreise. Preise können überhöht sein.
+  Die Ergebnisse sind eine Einschätzung – keine Garantie für Profit. Kein Scraping.
+</div>
+
+{% if last_scan %}
+<div class="card mb-3">
+  <div class="card-body py-2 small d-flex flex-wrap gap-3">
+    <span><strong>Scan vom:</strong> {{ last_scan.finished_at.strftime('%d.%m.%Y %H:%M') if last_scan.finished_at else '–' }}</span>
+    <span><strong>Karten:</strong> {{ last_scan.cards_scanned }}</span>
+    <span><strong>Listings (gesamt):</strong> {{ last_scan.listings_found }}</span>
+    <span><strong>Nach Filter:</strong> {{ last_scan.listings_saved }}</span>
+    <span class="badge {% if last_scan.status == 'done' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ last_scan.status }}</span>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-warning">Noch kein Scan für dieses Set. <a href="/sets/{{ set.id }}">Zum Set →</a></div>
+{% endif %}
+
+<!-- Filter form -->
+<form method="get" class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label mb-1 small">Rating</label>
+        <select name="rating" class="form-select form-select-sm">
+          <option value="">Alle Ratings</option>
+          {% for r in all_ratings %}
+          <option value="{{ r }}" {% if filters.rating == r %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label mb-1 small">Min. Raw-Listings</label>
+        <input type="number" name="min_listings" class="form-control form-control-sm" style="width:90px"
+          value="{{ filters.min_listings | int if filters.min_listings else '' }}" min="1">
+      </div>
+      <div class="col-auto pt-4">
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="only_raw" value="1" id="chk_raw"
+            {% if filters.only_raw %}checked{% endif %}>
+          <label class="form-check-label small" for="chk_raw">Nur mit Raw</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="only_psa10" value="1" id="chk_psa10"
+            {% if filters.only_psa10 %}checked{% endif %}>
+          <label class="form-check-label small" for="chk_psa10">Nur mit PSA 10</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="only_positive_roi" value="1" id="chk_roi"
+            {% if filters.only_positive_roi %}checked{% endif %}>
+          <label class="form-check-label small" for="chk_roi">Nur pos. ROI</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Filtern</button>
+        <a href="?" class="btn btn-sm btn-outline-secondary">Reset</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if results %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle small">
+    <thead class="table-dark">
+      <tr>
+        <th>#</th>
+        <th>Karte</th>
+        <th>Nummer</th>
+        <th title="Median aller Raw-Listings">Raw Median</th>
+        <th>Raw #</th>
+        <th>PSA 9 Med.</th>
+        <th>PSA 9 #</th>
+        <th>PSA 10 Med.</th>
+        <th>PSA 10 #</th>
+        <th title="PSA 10 Median / Raw Median">PSA10 ×</th>
+        <th>Erw. Gewinn</th>
+        <th>ROI %</th>
+        <th>Score</th>
+        <th>Rating</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      {% set rating_class = {
+        'Sehr interessant': 'table-success',
+        'Interessant': 'table-success',
+        'Riskant': 'table-warning',
+        'Nur bei PSA 10 interessant': 'table-warning',
+        'Nicht attraktiv': '',
+        'Zu wenig Daten': 'table-secondary'
+      }[r.rating] %}
+      <tr class="{{ rating_class }}">
+        <td class="text-muted">{{ loop.index }}</td>
+        <td class="fw-semibold">{{ r.card_name }}</td>
+        <td><code>{{ r.card_number }}</code></td>
+        <td>{% if r.raw_median %}<strong>{{ "%.2f"|format(r.raw_median) }} €</strong>{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td>{{ r.raw_count or '–' }}</td>
+        <td>{% if r.psa9_median %}{{ "%.2f"|format(r.psa9_median) }} €{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td>{{ r.psa9_count or '–' }}</td>
+        <td>{% if r.psa10_median %}{{ "%.2f"|format(r.psa10_median) }} €{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td>{{ r.psa10_count or '–' }}</td>
+        <td>{% if r.psa10_mult %}<span class="badge bg-info text-dark">{{ "%.1f"|format(r.psa10_mult) }}×</span>{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td>
+          {% if r.expected_profit is not none %}
+            <span class="fw-bold {% if r.expected_profit > 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ "%+.2f"|format(r.expected_profit) }} €
+            </span>
+          {% else %}
+            <span class="text-muted">–</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.roi_percent is not none %}
+            <span class="{% if r.roi_percent > 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ "%+.1f"|format(r.roi_percent) }} %
+            </span>
+          {% else %}
+            <span class="text-muted">–</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="progress" style="height:8px;min-width:50px">
+            <div class="progress-bar {% if r.score >= 70 %}bg-success{% elif r.score >= 40 %}bg-warning{% else %}bg-secondary{% endif %}"
+              style="width:{{ r.score }}%"></div>
+          </div>
+          <span class="text-muted" style="font-size:0.7rem">{{ "%.0f"|format(r.score) }}</span>
+        </td>
+        <td>
+          {% set badge_color = {
+            'Sehr interessant': 'success',
+            'Interessant': 'success',
+            'Riskant': 'warning',
+            'Nur bei PSA 10 interessant': 'warning',
+            'Nicht attraktiv': 'secondary',
+            'Zu wenig Daten': 'secondary'
+          }[r.rating] %}
+          <span class="badge bg-{{ badge_color }} text-{% if badge_color == 'warning' %}dark{% else %}white{% endif %}">
+            {{ r.rating }}
+          </span>
+        </td>
+        <td>
+          <a href="/sets/{{ set.id }}/cards/{{ r.card_id }}/analysis" class="btn btn-sm btn-outline-primary py-0">
+            <i class="bi bi-search"></i>
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted small mt-2">{{ results | length }} Karten angezeigt</p>
+{% elif last_scan %}
+<div class="text-center py-4 text-muted">
+  Keine Ergebnisse für die aktuellen Filter.
+</div>
+{% endif %}
+{% endblock %}

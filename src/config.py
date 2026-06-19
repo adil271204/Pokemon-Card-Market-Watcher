@@ -64,6 +64,21 @@ else:
 
 SESSION_SECRET_IS_SET: bool = bool(_raw_secret)
 
+# Set Scanner
+SET_SCAN_MAX_CARDS: int = int(os.getenv("SET_SCAN_MAX_CARDS", "200"))
+SET_SCAN_INCLUDE_AUCTIONS: bool = os.getenv("SET_SCAN_INCLUDE_AUCTIONS", "false").lower() in ("true", "1", "yes")
+SET_SCAN_DAYS: int = int(os.getenv("SET_SCAN_DAYS", "14"))
+
+# Grading costs (for opportunity calculation)
+GRADING_COST: float = float(os.getenv("GRADING_COST", "18"))
+GRADING_SHIPPING_TO_GRADER: float = float(os.getenv("GRADING_SHIPPING_TO_GRADER", "15"))
+GRADING_RETURN_SHIPPING: float = float(os.getenv("GRADING_RETURN_SHIPPING", "15"))
+GRADING_MARKETPLACE_FEE_PERCENT: float = float(os.getenv("GRADING_MARKETPLACE_FEE_PERCENT", "13"))
+GRADING_RISK_DISCOUNT_PERCENT: float = float(os.getenv("GRADING_RISK_DISCOUNT_PERCENT", "10"))
+GRADING_PSA10_PROBABILITY: float = float(os.getenv("GRADING_PSA10_PROBABILITY", "0.50"))
+GRADING_PSA9_PROBABILITY: float = float(os.getenv("GRADING_PSA9_PROBABILITY", "0.30"))
+GRADING_PSA8_OR_LOWER_PROBABILITY: float = float(os.getenv("GRADING_PSA8_OR_LOWER_PROBABILITY", "0.20"))
+
 # Derived helpers
 EBAY_KEYS_SET: bool = bool(EBAY_CLIENT_ID and EBAY_CLIENT_SECRET)
 

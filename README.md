@@ -360,7 +360,103 @@ Auf Render läuft die Migration automatisch beim Deploy über den `buildCommand`
 
 ---
 
-## 15. Listing-Diagnose
+## 15. Set Scanner
+
+Analysiert alle Karten eines Pokémon-Sets auf Grading-Opportunities.
+
+**Dashboard → Sets** (`/sets`)
+
+### A) Set importieren
+
+CSV hochladen unter **Sets → CSV importieren** (`/sets/import`).
+
+**CSV-Format:**
+
+```csv
+set_name,set_code,language,card_name,card_number,rarity,variant
+Scarlet & Violet 151,sv151,EN,Charizard ex,006/165,Double Rare,normal
+Scarlet & Violet 151,sv151,EN,Mew ex,193/165,Special Illustration Rare,normal
+```
+
+| Spalte | Pflicht | Beispiel |
+|---|---|---|
+| `set_name` | ✓ | `Scarlet & Violet 151` |
+| `set_code` | ✓ | `sv151` |
+| `language` | ✓ | `EN` |
+| `card_name` | ✓ | `Charizard ex` |
+| `card_number` | ✓ | `006/165` |
+| `rarity` | – | `Double Rare` |
+| `variant` | – | `normal` |
+
+Duplikate (gleicher set_code + language + card_number) werden automatisch übersprungen.
+
+Eine Beispiel-CSV ist unter `examples/set_import_template.csv` enthalten.
+
+### B) Set scannen
+
+1. **Dashboard → Sets → Set öffnen → „Set scannen"**
+2. Das System sucht für jede Karte Raw-, PSA 9- und PSA 10-Listings über die eBay Browse API.
+3. Ergebnisse erscheinen unter **Ergebnisse** als Ranking.
+
+**Für große Sets (> 50 Karten) empfohlen – CLI-Variante:**
+```bash
+python scripts/run_set_scan.py --set-code sv151
+python scripts/run_set_scan.py --set-code sv151 --max-cards 50 --days 30
+```
+
+Als Render One-off Job:
+```
+python scripts/run_set_scan.py --set-code sv151
+```
+
+### C) Ranking & Grading-Berechnung
+
+Pro Karte berechnet das System:
+
+| Metrik | Bedeutung |
+|---|---|
+| Raw Median | Median-Preis aktiver Raw-Listings |
+| PSA 9 / PSA 10 Median | Median-Preis aktiver PSA-Listings |
+| PSA10-Multiplikator | PSA 10 / Raw Median |
+| Erwarteter Gewinn | Gewinn nach Grading-Kosten, Versand, Marketplace-Fee |
+| ROI % | Return on Investment |
+| Rating | Sehr interessant / Interessant / Riskant / … |
+
+**Rating-Stufen:**
+- `Sehr interessant` – hoher erwarteter Profit
+- `Interessant` – moderater Profit
+- `Riskant` – knapper oder negativer Erwartungswert
+- `Nur bei PSA 10 interessant` – nur PSA 10 wäre profitabel
+- `Nicht attraktiv` – kein Profit zu erwarten
+- `Zu wenig Daten` – zu wenige Listings für eine Einschätzung
+
+### D) Environment Variables (Set Scanner)
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `SET_SCAN_MAX_CARDS` | `200` | Max. Karten pro Scan |
+| `SET_SCAN_INCLUDE_AUCTIONS` | `false` | Auktionen in Preisberechnung einschließen |
+| `SET_SCAN_DAYS` | `14` | Lookback-Zeitraum in Tagen |
+| `GRADING_COST` | `18` | PSA-Grading-Gebühr in € |
+| `GRADING_SHIPPING_TO_GRADER` | `15` | Versand zum Grader in € |
+| `GRADING_RETURN_SHIPPING` | `15` | Rückversand in € |
+| `GRADING_MARKETPLACE_FEE_PERCENT` | `13` | Marktplatz-Gebühr in % |
+| `GRADING_RISK_DISCOUNT_PERCENT` | `10` | Risikoabschlag in % |
+| `GRADING_PSA10_PROBABILITY` | `0.50` | Wahrscheinlichkeit PSA 10 |
+| `GRADING_PSA9_PROBABILITY` | `0.30` | Wahrscheinlichkeit PSA 9 |
+| `GRADING_PSA8_OR_LOWER_PROBABILITY` | `0.20` | Wahrscheinlichkeit PSA 8 oder niedriger |
+
+### E) Einschränkungen
+
+- **Aktive Listings, keine Verkaufspreise.** Aktive Preise können überhöht sein und spiegeln nicht den tatsächlichen Marktpreis wider.
+- **eBay Browse API ≠ eBay-Websuche.** API-Ergebnisse können von der eBay-Website abweichen.
+- **Kein Scraping.** Ausschließlich die offizielle eBay Browse API wird verwendet.
+- **Keine Garantie für Profit.** Das Rating ist eine Einschätzung, keine Anlageberatung.
+- Grading-Wahrscheinlichkeiten sind konfigurierbare Annahmen, keine garantierten Quoten.
+
+---
+
+## 16. Listing-Diagnose
 
 Wenn ein Listing nicht im Dashboard erscheint, hilft die Diagnose-Seite:
 
@@ -387,7 +483,7 @@ Wenn ein Listing nicht im Dashboard erscheint, hilft die Diagnose-Seite:
 
 ---
 
-## 14. Future Enhancements
+## 17. Future Enhancements
 
 | Feature | Description |
 |---|---|

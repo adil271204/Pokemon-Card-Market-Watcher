@@ -19,7 +19,11 @@ from src.diagnostics import diagnose_listing_against_watchlist, extract_ebay_ite
 from src.ebay_client import EbayClient
 from src.listing_cleaner import clean_and_classify_listing
 from src.location_filter import is_allowed_location
-from src.models import SeenListing, Watchlist
+import csv
+import io
+
+from src.models import PokemonCard, PokemonSet, SeenListing, SetScan, SetScanResult, Watchlist
+from src.set_scanner import build_card_queries, calculate_card_opportunity, run_set_scan
 from src.web import auth, services
 
 logger = logging.getLogger(__name__)
@@ -1092,3 +1096,357 @@ def _validate_watchlist_form(
         except ValueError:
             errors.append("Minimum Discount muss eine Zahl sein.")
     return errors
+
+
+# ---------------------------------------------------------------------------
+# Sets – list & detail
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sets", response_class=HTMLResponse, response_model=None)
+async def sets_list(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    with get_session() as db:
+        sets = db.query(PokemonSet).order_by(PokemonSet.name).all()
+        sets_data = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "code": s.code,
+                "language": s.language,
+                "total_cards": s.total_cards or db.query(PokemonCard).filter_by(set_id=s.id).count(),
+                "last_scan": (
+                    db.query(SetScan)
+                    .filter_by(set_id=s.id)
+                    .order_by(SetScan.started_at.desc())
+                    .first()
+                ),
+            }
+            for s in sets
+        ]
+    return _render(request, "sets.html", {"sets": sets_data})
+
+
+@router.get("/sets/import", response_class=HTMLResponse, response_model=None)
+async def sets_import_form(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    return _render(request, "set_import.html", {})
+
+
+@router.post("/sets/import", response_model=None)
+async def sets_import_submit(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    upload = form.get("csv_file")
+
+    if not upload or not hasattr(upload, "read"):
+        auth.set_flash(request, "Bitte eine CSV-Datei hochladen.", "danger")
+        return RedirectResponse(url="/sets/import", status_code=303)
+
+    content = await upload.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    required_cols = {"set_name", "set_code", "language", "card_name", "card_number"}
+
+    rows = list(reader)
+    if not rows:
+        auth.set_flash(request, "CSV ist leer.", "danger")
+        return RedirectResponse(url="/sets/import", status_code=303)
+
+    missing = required_cols - set(rows[0].keys())
+    if missing:
+        auth.set_flash(request, f"Fehlende Spalten: {', '.join(missing)}", "danger")
+        return RedirectResponse(url="/sets/import", status_code=303)
+
+    sets_created = 0
+    cards_created = 0
+    cards_skipped = 0
+
+    with get_session() as db:
+        for row in rows:
+            set_name = row.get("set_name", "").strip()
+            set_code = row.get("set_code", "").strip().lower()
+            language = row.get("language", "EN").strip().upper()
+            card_name = row.get("card_name", "").strip()
+            card_number = row.get("card_number", "").strip()
+            rarity = row.get("rarity", "").strip()
+            variant = row.get("variant", "normal").strip()
+
+            if not set_code or not card_name or not card_number:
+                continue
+
+            # Upsert set
+            pset = db.query(PokemonSet).filter_by(code=set_code, language=language).first()
+            if not pset:
+                pset = PokemonSet(name=set_name, code=set_code, language=language)
+                db.add(pset)
+                db.flush()
+                sets_created += 1
+
+            # Deduplicate card by set_id + language + card_number
+            existing = db.query(PokemonCard).filter_by(
+                set_id=pset.id, card_number=card_number, language=language
+            ).first()
+            if existing:
+                cards_skipped += 1
+                continue
+
+            card = PokemonCard(
+                set_id=pset.id,
+                name=card_name,
+                card_number=card_number,
+                rarity=rarity or None,
+                language=language,
+                variant=variant or "normal",
+                is_secret=_is_secret_card(card_number),
+            )
+            db.add(card)
+            cards_created += 1
+
+        db.commit()
+
+    auth.set_flash(
+        request,
+        f"Import abgeschlossen: {sets_created} Set(s) angelegt, {cards_created} Karten importiert, {cards_skipped} bereits vorhanden.",
+        "success",
+    )
+    return RedirectResponse(url="/sets", status_code=303)
+
+
+def _is_secret_card(card_number: str) -> bool:
+    """Heuristic: card number exceeds set total (e.g. 166/165)."""
+    parts = card_number.split("/")
+    if len(parts) == 2:
+        try:
+            return int(parts[0]) > int(parts[1])
+        except ValueError:
+            pass
+    return False
+
+
+@router.get("/sets/{set_id}", response_class=HTMLResponse, response_model=None)
+async def set_detail(request: Request, set_id: int) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    with get_session() as db:
+        pset = db.query(PokemonSet).filter_by(id=set_id).first()
+        if not pset:
+            auth.set_flash(request, "Set nicht gefunden.", "danger")
+            return RedirectResponse(url="/sets", status_code=303)
+        cards = (
+            db.query(PokemonCard)
+            .filter_by(set_id=set_id)
+            .order_by(PokemonCard.card_number)
+            .all()
+        )
+        last_scan = (
+            db.query(SetScan)
+            .filter_by(set_id=set_id)
+            .order_by(SetScan.started_at.desc())
+            .first()
+        )
+        set_data = {
+            "id": pset.id,
+            "name": pset.name,
+            "code": pset.code,
+            "language": pset.language,
+            "total_cards": pset.total_cards or len(cards),
+            "created_at": pset.created_at,
+        }
+        cards_data = [
+            {
+                "id": c.id,
+                "name": c.name,
+                "card_number": c.card_number,
+                "rarity": c.rarity,
+                "variant": c.variant,
+                "is_secret": c.is_secret,
+                "search_name": c.search_name,
+            }
+            for c in cards
+        ]
+    return _render(request, "set_detail.html", {
+        "set": set_data,
+        "cards": cards_data,
+        "last_scan": last_scan,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Set Scan
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/{set_id}/scan", response_model=None)
+async def set_scan(request: Request, set_id: int) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    with get_session() as db:
+        pset = db.query(PokemonSet).filter_by(id=set_id).first()
+        if not pset:
+            auth.set_flash(request, "Set nicht gefunden.", "danger")
+            return RedirectResponse(url="/sets", status_code=303)
+
+        try:
+            scan = run_set_scan(db, pset)
+            auth.set_flash(
+                request,
+                f"Scan abgeschlossen: {scan.cards_scanned} Karten, {scan.listings_found} Listings gefunden, {scan.listings_saved} nach Filter.",
+                "success",
+            )
+        except Exception as exc:
+            logger.error("Set scan failed: %s", exc, exc_info=True)
+            auth.set_flash(request, f"Scan-Fehler: {exc}", "danger")
+
+    return RedirectResponse(url=f"/sets/{set_id}/scan-results", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Scan Results
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sets/{set_id}/scan-results", response_class=HTMLResponse, response_model=None)
+async def set_scan_results(request: Request, set_id: int) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    # Filter params
+    only_raw = request.query_params.get("only_raw", "")
+    only_psa10 = request.query_params.get("only_psa10", "")
+    only_positive_roi = request.query_params.get("only_positive_roi", "")
+    rating_filter = request.query_params.get("rating", "")
+    min_listings = _parse_optional_float(request.query_params.get("min_listings"))
+
+    with get_session() as db:
+        pset = db.query(PokemonSet).filter_by(id=set_id).first()
+        if not pset:
+            auth.set_flash(request, "Set nicht gefunden.", "danger")
+            return RedirectResponse(url="/sets", status_code=303)
+
+        last_scan = (
+            db.query(SetScan)
+            .filter_by(set_id=set_id, status="done")
+            .order_by(SetScan.finished_at.desc())
+            .first()
+        )
+
+        results: list[dict] = []
+        if last_scan:
+            rows = (
+                db.query(SetScanResult, PokemonCard)
+                .join(PokemonCard, SetScanResult.pokemon_card_id == PokemonCard.id)
+                .filter(SetScanResult.set_scan_id == last_scan.id)
+                .all()
+            )
+            for r, c in rows:
+                reasons = json.loads(r.reasons_json) if r.reasons_json else []
+                row_dict = {
+                    "id": r.id,
+                    "card_id": c.id,
+                    "card_name": c.name,
+                    "card_number": c.card_number,
+                    "rarity": c.rarity,
+                    "raw_median": r.raw_median_price,
+                    "raw_min": r.raw_min_price,
+                    "raw_count": r.raw_listing_count,
+                    "psa9_median": r.psa9_median_price,
+                    "psa9_count": r.psa9_listing_count,
+                    "psa10_median": r.psa10_median_price,
+                    "psa10_count": r.psa10_listing_count,
+                    "psa10_mult": r.psa10_multiplier,
+                    "psa9_mult": r.psa9_multiplier,
+                    "expected_profit": r.expected_profit,
+                    "roi_percent": r.roi_percent,
+                    "score": r.score,
+                    "rating": r.rating,
+                    "reasons": reasons,
+                }
+                # Apply filters
+                if only_raw and not r.raw_listing_count:
+                    continue
+                if only_psa10 and not r.psa10_listing_count:
+                    continue
+                if only_positive_roi and (r.roi_percent is None or r.roi_percent <= 0):
+                    continue
+                if rating_filter and r.rating != rating_filter:
+                    continue
+                if min_listings and (r.raw_listing_count or 0) < min_listings:
+                    continue
+                results.append(row_dict)
+
+            results.sort(key=lambda x: x["score"], reverse=True)
+
+    all_ratings = ["Sehr interessant", "Interessant", "Riskant", "Nur bei PSA 10 interessant", "Nicht attraktiv", "Zu wenig Daten"]
+    return _render(request, "set_scan_results.html", {
+        "set": {"id": set_id, "name": pset.name if pset else ""},
+        "last_scan": last_scan,
+        "results": results,
+        "filters": {
+            "only_raw": only_raw,
+            "only_psa10": only_psa10,
+            "only_positive_roi": only_positive_roi,
+            "rating": rating_filter,
+            "min_listings": min_listings,
+        },
+        "all_ratings": all_ratings,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Card Analysis
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sets/{set_id}/cards/{card_id}/analysis", response_class=HTMLResponse, response_model=None)
+async def card_analysis(request: Request, set_id: int, card_id: int) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    with get_session() as db:
+        pset = db.query(PokemonSet).filter_by(id=set_id).first()
+        card = db.query(PokemonCard).filter_by(id=card_id, set_id=set_id).first()
+        if not pset or not card:
+            auth.set_flash(request, "Karte oder Set nicht gefunden.", "danger")
+            return RedirectResponse(url=f"/sets/{set_id}", status_code=303)
+
+        # Latest scan result for this card
+        scan_result = (
+            db.query(SetScanResult)
+            .join(SetScan, SetScanResult.set_scan_id == SetScan.id)
+            .filter(
+                SetScanResult.pokemon_card_id == card_id,
+                SetScan.set_id == set_id,
+                SetScan.status == "done",
+            )
+            .order_by(SetScan.finished_at.desc())
+            .first()
+        )
+
+        queries = build_card_queries(card, pset)
+        reasons = json.loads(scan_result.reasons_json) if scan_result and scan_result.reasons_json else []
+
+    return _render(request, "set_card_analysis.html", {
+        "set": {"id": pset.id, "name": pset.name},
+        "card": card,
+        "scan_result": scan_result,
+        "queries": queries,
+        "reasons": reasons,
+        "grading_config": {
+            "cost": config.GRADING_COST,
+            "shipping_to": config.GRADING_SHIPPING_TO_GRADER,
+            "return_shipping": config.GRADING_RETURN_SHIPPING,
+            "fee_pct": config.GRADING_MARKETPLACE_FEE_PERCENT,
+            "psa10_prob": config.GRADING_PSA10_PROBABILITY,
+            "psa9_prob": config.GRADING_PSA9_PROBABILITY,
+        },
+    })

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ card.name }} – Analyse – Card Watcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2 class="mb-0">{{ card.name }}</h2>
+    <span class="text-muted small">
+      <code>{{ card.card_number }}</code>
+      {% if card.rarity %} · {{ card.rarity }}{% endif %}
+      {% if card.is_secret %} <span class="badge bg-warning text-dark">Secret</span>{% endif %}
+      · <a href="/sets/{{ set.id }}">{{ set.name }}</a>
+    </span>
+  </div>
+  <a href="/sets/{{ set.id }}/scan-results" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Ergebnisse
+  </a>
+</div>
+
+<div class="alert alert-info small mb-4">
+  <i class="bi bi-info-circle me-1"></i>
+  Aktive eBay-Listings, keine Verkaufspreise. Kein Scraping – ausschließlich eBay Browse API.
+</div>
+
+{% if scan_result %}
+<!-- Price Overview -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="display-6 fw-bold">
+          {% if scan_result.raw_median_price %}{{ "%.2f"|format(scan_result.raw_median_price) }} €{% else %}<span class="text-muted">–</span>{% endif %}
+        </div>
+        <div class="text-muted small">Raw Median ({{ scan_result.raw_listing_count }} Listings)</div>
+        {% if scan_result.raw_min_price %}
+        <div class="text-muted" style="font-size:0.8rem">Min: {{ "%.2f"|format(scan_result.raw_min_price) }} €</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="display-6 fw-bold text-info">
+          {% if scan_result.psa9_median_price %}{{ "%.2f"|format(scan_result.psa9_median_price) }} €{% else %}<span class="text-muted">–</span>{% endif %}
+        </div>
+        <div class="text-muted small">PSA 9 Median ({{ scan_result.psa9_listing_count }} Listings)</div>
+        {% if scan_result.psa9_multiplier %}
+        <div class="badge bg-info text-dark">{{ "%.1f"|format(scan_result.psa9_multiplier) }}× Raw</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center">
+      <div class="card-body">
+        <div class="display-6 fw-bold text-primary">
+          {% if scan_result.psa10_median_price %}{{ "%.2f"|format(scan_result.psa10_median_price) }} €{% else %}<span class="text-muted">–</span>{% endif %}
+        </div>
+        <div class="text-muted small">PSA 10 Median ({{ scan_result.psa10_listing_count }} Listings)</div>
+        {% if scan_result.psa10_multiplier %}
+        <div class="badge bg-primary">{{ "%.1f"|format(scan_result.psa10_multiplier) }}× Raw</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Grading Opportunity -->
+<div class="card mb-4 {% if scan_result.rating == 'Sehr interessant' or scan_result.rating == 'Interessant' %}border-success{% elif scan_result.rating == 'Zu wenig Daten' %}border-secondary{% endif %}">
+  <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-graph-up-arrow me-1"></i>Grading-Opportunity</span>
+    {% set badge_color = {
+      'Sehr interessant': 'success',
+      'Interessant': 'success',
+      'Riskant': 'warning',
+      'Nur bei PSA 10 interessant': 'warning',
+      'Nicht attraktiv': 'secondary',
+      'Zu wenig Daten': 'secondary'
+    }[scan_result.rating] %}
+    <span class="badge bg-{{ badge_color }} text-{% if badge_color == 'warning' %}dark{% else %}white{% endif %} fs-6">
+      {{ scan_result.rating }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-bold fs-4 {% if scan_result.expected_profit and scan_result.expected_profit > 0 %}text-success{% elif scan_result.expected_profit is not none %}text-danger{% else %}text-muted{% endif %}">
+          {% if scan_result.expected_profit is not none %}{{ "%+.2f"|format(scan_result.expected_profit) }} €{% else %}–{% endif %}
+        </div>
+        <div class="text-muted small">Erwarteter Gewinn</div>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-bold fs-4 {% if scan_result.roi_percent and scan_result.roi_percent > 0 %}text-success{% elif scan_result.roi_percent is not none %}text-danger{% else %}text-muted{% endif %}">
+          {% if scan_result.roi_percent is not none %}{{ "%+.1f"|format(scan_result.roi_percent) }} %{% else %}–{% endif %}
+        </div>
+        <div class="text-muted small">ROI</div>
+      </div>
+      <div class="col-md-4">
+        <div class="fw-bold fs-4">{{ "%.0f"|format(scan_result.score) }} / 100</div>
+        <div class="text-muted small">Score</div>
+        <div class="progress mt-1" style="height:6px">
+          <div class="progress-bar {% if scan_result.score >= 70 %}bg-success{% elif scan_result.score >= 40 %}bg-warning{% else %}bg-secondary{% endif %}"
+            style="width:{{ scan_result.score }}%"></div>
+        </div>
+      </div>
+    </div>
+
+    {% if reasons %}
+    <hr>
+    <ul class="list-unstyled small mb-0">
+      {% for r in reasons %}
+      <li><i class="bi bi-chevron-right text-muted me-1"></i>{{ r }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  <div class="card-footer small text-muted">
+    Grading-Kosten: {{ grading_config.cost }} € · Versand hin/zurück: {{ grading_config.shipping_to }} / {{ grading_config.return_shipping }} €
+    · Marktplatz-Fee: {{ grading_config.fee_pct }} %
+    · PSA 10 Wahrsch.: {{ (grading_config.psa10_prob * 100) | round | int }} %
+    · PSA 9: {{ (grading_config.psa9_prob * 100) | round | int }} %
+  </div>
+</div>
+
+{% else %}
+<div class="alert alert-warning">
+  Noch kein Scan-Ergebnis für diese Karte. <a href="/sets/{{ set.id }}">Set scannen</a>.
+</div>
+{% endif %}
+
+<!-- eBay Queries used -->
+<div class="card mb-4">
+  <div class="card-header fw-semibold small">Verwendete eBay-Queries</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="fw-semibold small mb-1">RAW</div>
+        {% for q in queries.raw %}
+        <div class="badge bg-secondary mb-1 text-wrap text-start">{{ q }}</div><br>
+        {% endfor %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold small mb-1">PSA 9</div>
+        {% for q in queries.psa9 %}
+        <div class="badge bg-info text-dark mb-1">{{ q }}</div><br>
+        {% endfor %}
+      </div>
+      <div class="col-md-4">
+        <div class="fw-semibold small mb-1">PSA 10</div>
+        {% for q in queries.psa10 %}
+        <div class="badge bg-primary mb-1">{{ q }}</div><br>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="mt-2 small text-muted">
+      Alle Queries werden über die eBay Browse API (<code>GET /buy/browse/v1/item_summary/search</code>) abgefragt. Kein Scraping.
+    </div>
+  </div>
+</div>
+{% endblock %}
