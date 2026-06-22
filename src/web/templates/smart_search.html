@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Smart Search – Card Watcher{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="bi bi-lightning-charge me-2"></i>Smart Search</h2>
+</div>
+
+<div class="alert alert-info small mb-3">
+  <i class="bi bi-info-circle me-1"></i>
+  <strong>Smart Search</strong> sucht direkt auf eBay – ohne Watchlist.
+  Nur offizielle eBay Browse API. Kein Scraping. Keine Alerts werden gesendet.
+  Cardmarket-Links werden nur zur Ableitung von Suchbegriffen genutzt – keine Preisdaten.
+</div>
+
+<!-- Search form -->
+<form method="post" action="/smart-search" class="card mb-4">
+  <div class="card-body">
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Suche</label>
+      <input type="text" name="input_value" class="form-control form-control-lg"
+        placeholder="Charizard ex 006/165 151   –   sv151   –   https://www.cardmarket.com/…"
+        value="{{ result.input_value if result else '' }}" autofocus required>
+      <div class="form-text">Kartenname, Setname/Code, oder Cardmarket-Link</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-sm-3">
+        <label class="form-label small">Modus</label>
+        <select name="search_mode" class="form-select form-select-sm">
+          {% set cur_mode = result.form.search_mode if result and result.form else 'auto' %}
+          <option value="auto" {% if cur_mode == 'auto' %}selected{% endif %}>Auto</option>
+          <option value="einzelkarte" {% if cur_mode == 'einzelkarte' %}selected{% endif %}>Einzelkarte</option>
+          <option value="set" {% if cur_mode == 'set' %}selected{% endif %}>Set</option>
+        </select>
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label small">Zeitraum</label>
+        <select name="lookback_hours" class="form-select form-select-sm">
+          {% set cur_h = result.options.lookback_hours if result and result.options else 24 %}
+          {% for h, label in [(24, "24 Stunden"), (72, "3 Tage"), (168, "7 Tage"), (336, "14 Tage")] %}
+          <option value="{{ h }}" {% if cur_h == h %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label small">Max Ergebnisse / Query</label>
+        <input type="number" name="max_results_per_query" class="form-control form-control-sm"
+          value="{{ result.options.max_results_per_query if result and result.options else 50 }}" min="5" max="200">
+      </div>
+    </div>
+
+    <div class="row g-2 mb-3">
+      {% set opts = result.options if result and result.options else {} %}
+      <div class="col-auto">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="include_raw" id="inc_raw"
+            {% if not result or opts.get('include_raw', True) %}checked{% endif %}>
+          <label class="form-check-label small" for="inc_raw">RAW</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="include_psa9" id="inc_psa9"
+            {% if not result or opts.get('include_psa9', True) %}checked{% endif %}>
+          <label class="form-check-label small" for="inc_psa9">PSA 9</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="include_psa10" id="inc_psa10"
+            {% if not result or opts.get('include_psa10', True) %}checked{% endif %}>
+          <label class="form-check-label small" for="inc_psa10">PSA 10</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="include_auctions" id="inc_auc"
+            {% if result and opts.get('include_auctions') %}checked{% endif %}>
+          <label class="form-check-label small" for="inc_auc">Auktionen</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="only_eu" id="only_eu"
+            {% if not result or opts.get('only_eu', True) %}checked{% endif %}>
+          <label class="form-check-label small" for="only_eu">Nur EU</label>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-lightning-charge me-1"></i>Suchen
+    </button>
+  </div>
+</form>
+
+{% if result %}
+
+{% set parsed = result.parsed %}
+
+<!-- Detection info -->
+<div class="card mb-3">
+  <div class="card-body py-2 small d-flex flex-wrap gap-3 align-items-center">
+    <span><strong>Erkannter Typ:</strong>
+      {% set type_labels = {"card": "Einzelkarte", "set": "Set", "cardmarket_url": "Cardmarket-Link", "unknown": "Unbekannt"} %}
+      <span class="badge bg-primary">{{ type_labels.get(parsed.type, parsed.type) }}</span>
+    </span>
+    {% if parsed.detected_card_name %}
+    <span><strong>Karte:</strong> {{ parsed.detected_card_name }}</span>
+    {% endif %}
+    {% if parsed.detected_set_name %}
+    <span><strong>Set:</strong> {{ parsed.detected_set_name }}</span>
+    {% endif %}
+    {% if parsed.detected_card_number %}
+    <span><strong>Nummer:</strong> <code>{{ parsed.detected_card_number }}</code></span>
+    {% endif %}
+    <span><strong>API-Treffer:</strong> {{ result.api_total }}</span>
+    <span><strong>Nach Filter:</strong> <span class="badge bg-success">{{ result.after_filter }}</span></span>
+    <span><strong>Zeitraum:</strong> {{ result.options.lookback_hours }} Std.</span>
+  </div>
+</div>
+
+{% if parsed.warnings %}
+<div class="alert alert-warning small mb-3">
+  {% for w in parsed.warnings %}<div><i class="bi bi-exclamation-triangle me-1"></i>{{ w }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{% if result.errors %}
+<div class="alert alert-danger small mb-3">
+  {% for e in result.errors %}<div><i class="bi bi-x-circle me-1"></i>{{ e }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<!-- Queries used -->
+{% if result.queries_run %}
+<div class="mb-3 small text-muted">
+  <strong>Queries:</strong>
+  {% for q in result.queries_run %}
+  <span class="badge bg-secondary me-1">{{ q }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ============================================================ -->
+<!-- SET RESULTS -->
+<!-- ============================================================ -->
+{% if result.set_not_imported %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  Set <strong>«{{ result.set_search_term }}»</strong> noch nicht importiert.
+  Bitte zuerst importieren:
+  <div class="mt-2 d-flex gap-2">
+    <a href="/sets/import-url" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-link-45deg me-1"></i>URL-Import
+    </a>
+    <a href="/sets/import" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-filetype-csv me-1"></i>CSV-Import
+    </a>
+  </div>
+</div>
+
+{% elif result.set_summaries is not none %}
+<h5 class="mb-3">
+  <i class="bi bi-collection me-1"></i>Set: {{ result.set_name }}
+  <a href="/sets/{{ result.set_id }}" class="btn btn-sm btn-outline-secondary ms-2">Set-Details</a>
+</h5>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle small">
+    <thead class="table-dark">
+      <tr>
+        <th>Karte</th>
+        <th>Nr.</th>
+        <th>RAW #</th>
+        <th>RAW ab</th>
+        <th>PSA 9 #</th>
+        <th>PSA 9 ab</th>
+        <th>PSA 10 #</th>
+        <th>PSA 10 ab</th>
+        <th>Links</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in result.set_summaries %}
+      <tr>
+        <td class="fw-semibold">{{ s.card.name }}</td>
+        <td><code>{{ s.card.card_number }}</code></td>
+        <td>{{ s.raw_count or '–' }}</td>
+        <td>
+          {% if s.raw_min %}<strong>{{ "%.2f"|format(s.raw_min) }} €</strong>{% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
+        <td>{{ s.psa9_count or '–' }}</td>
+        <td>
+          {% if s.psa9_min %}{{ "%.2f"|format(s.psa9_min) }} €{% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
+        <td>{{ s.psa10_count or '–' }}</td>
+        <td>
+          {% if s.psa10_min %}<span class="fw-bold text-primary">{{ "%.2f"|format(s.psa10_min) }} €</span>{% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
+        <td class="text-nowrap">
+          {% if s.best_raw_url %}
+          <a href="{{ s.best_raw_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-secondary py-0 px-1 me-1" title="Günstigstes RAW">RAW</a>
+          {% endif %}
+          {% if s.best_psa9_url %}
+          <a href="{{ s.best_psa9_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-info py-0 px-1 me-1" title="Günstigstes PSA 9">9</a>
+          {% endif %}
+          {% if s.best_psa10_url %}
+          <a href="{{ s.best_psa10_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary py-0 px-1" title="Günstigstes PSA 10">10</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if not result.set_summaries %}
+<div class="text-center py-4 text-muted">Keine Listings im gewählten Zeitraum gefunden.</div>
+{% endif %}
+
+<!-- ============================================================ -->
+<!-- CARD RESULTS -->
+<!-- ============================================================ -->
+{% elif result.listings %}
+
+<!-- Save as watchlist button -->
+{% if result.queries_run %}
+<div class="mb-3 d-flex gap-2 flex-wrap">
+  {% for q in result.queries_run[:3] %}
+  <form method="post" action="/smart-search/save-watchlist" class="d-inline">
+    <input type="hidden" name="query" value="{{ q }}">
+    <input type="hidden" name="name" value="{{ q }}">
+    <button type="submit" class="btn btn-sm btn-outline-success">
+      <i class="bi bi-plus-circle me-1"></i>Als Watchlist: «{{ q }}»
+    </button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle small">
+    <thead class="table-dark">
+      <tr>
+        <th style="width:60px">Bild</th>
+        <th>Kategorie</th>
+        <th>Titel</th>
+        <th>Typ</th>
+        <th>Land</th>
+        <th>Zustand</th>
+        <th>Preis</th>
+        <th>Versand</th>
+        <th>Gesamt</th>
+        <th>Datum</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in result.listings %}
+      {% set l = r.listing %}
+      <tr class="{% if r.is_auction %}table-warning{% endif %}">
+        <td>
+          {% if l.image_url %}
+          <img src="{{ l.image_url }}" alt="" style="width:50px;height:50px;object-fit:contain">
+          {% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
+        <td>
+          {% set cat_color = {"RAW": "secondary", "PSA9": "info", "PSA10": "primary"}[r.category] %}
+          <span class="badge bg-{{ cat_color }} {% if cat_color == 'info' %}text-dark{% endif %}">
+            {{ r.category }}
+          </span>
+        </td>
+        <td class="text-truncate" style="max-width:260px" title="{{ l.title }}">{{ l.title }}</td>
+        <td class="text-nowrap small">
+          {% if r.is_auction %}
+            <span class="badge bg-warning text-dark">Auktion</span>
+          {% else %}
+            <span class="text-muted">Sofortkauf</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if l.location_country %}
+          <span class="badge bg-secondary">{{ l.location_country }}</span>
+          {% if l.location_city %}<span class="text-muted ms-1">{{ l.location_city }}</span>{% endif %}
+          {% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
+        <td class="small text-muted">{{ l.condition or '–' }}</td>
+        <td class="small">{{ "%.2f"|format(l.price) }} €</td>
+        <td class="small">{{ "%.2f"|format(l.shipping) }} €</td>
+        <td><strong class="text-primary">{{ "%.2f"|format(l.total_price) }} €</strong></td>
+        <td class="small text-muted text-nowrap">
+          {{ l.listing_date.strftime('%d.%m.%Y') if l.listing_date else '–' }}
+        </td>
+        <td>
+          {% if l.url %}
+          <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer"
+            class="btn btn-sm btn-outline-primary py-0">
+            <i class="bi bi-box-arrow-up-right"></i>
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted small">{{ result.listings | length }} Listings angezeigt</p>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-search display-4 d-block mb-3"></i>
+  Keine Listings im gewählten Zeitraum und Filter gefunden.
+</div>
+{% endif %}
+
+{% endif %}{# end if result #}
+{% endblock %}

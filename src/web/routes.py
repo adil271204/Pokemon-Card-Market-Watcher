@@ -25,6 +25,7 @@ import io
 from src.models import PokemonCard, PokemonSet, SeenListing, SetScan, SetScanResult, Watchlist
 from src.cardlist_importer import fetch_cardlist_url, parse_cardlist_html
 from src.set_scanner import build_card_queries, calculate_card_opportunity, run_set_scan
+from src.smart_search import build_smart_queries, detect_smart_search_input, run_smart_search, search_set_cards
 from src.web import auth, services
 
 logger = logging.getLogger(__name__)
@@ -1582,3 +1583,156 @@ async def card_analysis(request: Request, set_id: int, card_id: int) -> HTMLResp
             "psa9_prob": config.GRADING_PSA9_PROBABILITY,
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# Smart Search
+# ---------------------------------------------------------------------------
+
+
+
+@router.get("/smart-search", response_class=HTMLResponse, response_model=None)
+async def smart_search_get(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+    return _render(request, "smart_search.html", {"result": None})
+
+
+@router.post("/smart-search", response_model=None)
+async def smart_search_post(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    input_value = (form.get("input_value") or "").strip()
+    search_mode = (form.get("search_mode") or "auto").lower()
+    lookback_hours = int(form.get("lookback_hours") or 24)
+    include_raw = form.get("include_raw") == "on"
+    include_psa9 = form.get("include_psa9") == "on"
+    include_psa10 = form.get("include_psa10") == "on"
+    include_auctions = form.get("include_auctions") == "on"
+    only_eu = form.get("only_eu") == "on"
+    max_results = int(form.get("max_results_per_query") or 50)
+
+    options = {
+        "lookback_hours": lookback_hours,
+        "include_raw": include_raw,
+        "include_psa9": include_psa9,
+        "include_psa10": include_psa10,
+        "include_auctions": include_auctions,
+        "only_eu": only_eu,
+        "max_results_per_query": max_results,
+    }
+
+    if not input_value:
+        return _render(request, "smart_search.html", {
+            "result": None,
+            "error": "Bitte einen Suchbegriff eingeben.",
+            "form": dict(form),
+        })
+
+    parsed = detect_smart_search_input(input_value)
+
+    # Override type if user selected explicit mode
+    if search_mode == "set":
+        parsed["type"] = "set"
+    elif search_mode == "einzelkarte":
+        parsed["type"] = "card"
+
+    result_data: dict[str, Any] = {
+        "parsed": parsed,
+        "options": options,
+        "input_value": input_value,
+        "set_not_imported": False,
+        "set_summaries": None,
+        "listings": [],
+        "api_total": 0,
+        "after_filter": 0,
+        "queries_run": [],
+        "errors": [],
+        "form": dict(form),
+    }
+
+    # --- Set search ---
+    if parsed["type"] == "set":
+        set_name_or_code = parsed.get("detected_set_name") or input_value
+        with get_session() as db:
+            # Try to find by code first, then by name (case-insensitive)
+            pset = (
+                db.query(PokemonSet)
+                .filter(PokemonSet.code == set_name_or_code.lower())
+                .first()
+            )
+            if not pset:
+                pset = (
+                    db.query(PokemonSet)
+                    .filter(PokemonSet.name.ilike(f"%{set_name_or_code}%"))
+                    .first()
+                )
+
+            if not pset:
+                result_data["set_not_imported"] = True
+                result_data["set_search_term"] = set_name_or_code
+            else:
+                cards = db.query(PokemonCard).filter_by(set_id=pset.id).order_by(PokemonCard.card_number).all()
+                if not cards:
+                    result_data["set_not_imported"] = True
+                    result_data["set_search_term"] = set_name_or_code
+                else:
+                    set_result = search_set_cards(pset, cards, options)
+                    result_data["set_summaries"] = set_result["card_summaries"]
+                    result_data["api_total"] = set_result["api_total"]
+                    result_data["after_filter"] = sum(
+                        s["raw_count"] + s["psa9_count"] + s["psa10_count"]
+                        for s in set_result["card_summaries"]
+                    )
+                    result_data["set_name"] = pset.name
+                    result_data["set_id"] = pset.id
+
+    # --- Card / Cardmarket URL search ---
+    else:
+        queries = build_smart_queries(parsed, options)
+        result_data["queries_run"] = [q["query"] for q in queries]
+
+        if not queries:
+            result_data["errors"] = ["Keine Queries generiert. Bitte Suchbegriff präzisieren."]
+        else:
+            search_result = run_smart_search(queries, options)
+            result_data["api_total"] = search_result["api_total"]
+            result_data["after_filter"] = search_result["after_filter"]
+            result_data["errors"] = search_result["errors"]
+            result_data["listings"] = search_result["results"]
+            result_data["queries_run"] = search_result["queries_run"]
+
+    return _render(request, "smart_search.html", {"result": result_data})
+
+
+@router.post("/smart-search/save-watchlist", response_model=None)
+async def smart_search_save_watchlist(request: Request) -> HTMLResponse | RedirectResponse:
+    """Save a Smart Search query as a Watchlist entry."""
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    query = (form.get("query") or "").strip()
+    name = (form.get("name") or query or "Smart Search").strip()
+
+    if not query:
+        auth.set_flash(request, "Keine Query angegeben.", "danger")
+        return RedirectResponse(url="/smart-search", status_code=303)
+
+    with get_session() as db:
+        services.create_watchlist(db, {
+            "name": name,
+            "query": query,
+            "marketplace": config.EBAY_MARKETPLACE,
+            "max_price": None,
+            "target_market_price": None,
+            "min_discount_percent": 15.0,
+            "target_grade": None,
+            "target_language": None,
+            "enabled": True,
+        })
+
+    auth.set_flash(request, f"Watchlist «{name}» wurde erstellt.", "success")
+    return RedirectResponse(url="/watchlists", status_code=303)

@@ -456,7 +456,55 @@ Pro Karte berechnet das System:
 
 ---
 
-## 16. Kartenlisten-Import per URL
+## 16. Smart Search
+
+Unter **Smart Search** (`/smart-search`) kannst du direkt nach eBay-Listings suchen – ohne zuerst eine Watchlist anlegen zu müssen.
+
+### Unterstützte Eingabetypen
+
+| Eingabe | Beispiel |
+|---|---|
+| Kartenname / freie Suche | `Charizard ex 006/165 151` |
+| Setname oder Set-Code | `sv151` / `Scarlet & Violet 151` |
+| Cardmarket-Link | `https://www.cardmarket.com/de/Pokemon/Products/Singles/Scarlet-Violet-151/Charizard-ex-V3-MEW199` |
+
+### Cardmarket-Link
+
+- Der Link wird **nur zur Ableitung von Suchbegriffen** genutzt (URL-Slug-Parsing + optionaler GET für Seitentitel).
+- **Kein Cardmarket-Preis-Scraping.** Keine Preise, keine Marktdaten von Cardmarket.
+- Kein Login-Bypass, keine Captcha-Umgehung.
+
+### Set-Suche
+
+- Funktioniert nur für **bereits importierte Sets** (via CSV oder URL-Import).
+- Wenn das Set nicht in der Datenbank ist, erscheint eine klare Meldung mit Links zum Import.
+
+### Optionen
+
+| Option | Standard | Bedeutung |
+|---|---|---|
+| Modus | Auto | Auto / Einzelkarte / Set |
+| Zeitraum | 24 Std. | Lookback-Fenster |
+| RAW / PSA 9 / PSA 10 | ✓ | Welche Kategorien durchsucht werden |
+| Auktionen | ✗ | Auktionen einschließen |
+| Nur EU | ✓ | EU-Länderfilter aktiv |
+
+### Ergebnisse
+
+- Tabelle mit Bild, Kategorie, Titel, Land, Preis, Gesamtpreis, Datum, eBay-Link
+- Bei Set-Suche: Karten-Ranking mit RAW/PSA9/PSA10 Mindestpreis und direkten eBay-Links
+- Button „Als Watchlist speichern" – optional, nur auf Wunsch
+
+### Einschränkungen
+
+- **Keine Alerts.** Smart Search sendet keine Telegram-Nachrichten. Alerts laufen über Watchlists.
+- **Kein eBay-Scraping.** Ausschließlich offizielle eBay Browse API.
+- **Kein Cardmarket-Preis-Scraping.**
+- Set-Suche erfordert vorher importierte Kartenliste.
+
+---
+
+## 17. Kartenlisten-Import per URL
 
 Unter **Sets → URL-Import** (`/sets/import-url`) kannst du eine externe Kartenlisten-Seite per URL importieren.
 

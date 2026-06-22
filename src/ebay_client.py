@@ -352,6 +352,7 @@ class EbayClient:
         limit: int = 50,
         lookback_days: int | None = None,
         max_pages: int | None = None,
+        include_auctions: bool = False,
     ) -> list[RawListing]:
         """
         Fetch listings across multiple pages, filtered to the last *lookback_days* days.
@@ -374,7 +375,7 @@ class EbayClient:
 
         for page in range(effective_max_pages):
             offset = page * limit
-            page_listings = self._fetch_real_page(query, marketplace, max_price, limit, offset)
+            page_listings = self._fetch_real_page(query, marketplace, max_price, limit, offset, include_auctions=include_auctions)
 
             if not page_listings:
                 logger.info("Backfill: no more results at offset=%d, stopping.", offset)
@@ -470,19 +471,23 @@ class EbayClient:
         limit: int,
         offset: int,
         retry_on_401: bool = True,
+        include_auctions: bool = False,
     ) -> list[RawListing]:
         token = self._ensure_token()
 
+        buying_filter = "" if include_auctions else "buyingOptions:{FIXED_PRICE}"
         params: dict[str, Any] = {
             "q": query,
             "sort": "newlyListed",
             "limit": limit,
             "offset": offset,
-            "filter": "buyingOptions:{FIXED_PRICE}",
         }
+        if buying_filter:
+            params["filter"] = buying_filter
 
         if max_price is not None:
-            params["filter"] += f",price:[..{max_price:.2f}],priceCurrency:EUR"
+            price_filter = f"price:[..{max_price:.2f}],priceCurrency:EUR"
+            params["filter"] = f"{params.get('filter', '')},{price_filter}".strip(",")
 
         try:
             resp = requests.get(
@@ -503,7 +508,7 @@ class EbayClient:
             logger.warning("eBay returned 401 – refreshing token and retrying once")
             self._access_token = None
             self._token_expires_at = 0.0
-            return self._fetch_real_page(query, marketplace, max_price, limit, offset, retry_on_401=False)
+            return self._fetch_real_page(query, marketplace, max_price, limit, offset, retry_on_401=False, include_auctions=include_auctions)
 
         if resp.status_code == 429:
             logger.error(
