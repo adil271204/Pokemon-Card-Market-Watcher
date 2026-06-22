@@ -164,91 +164,12 @@
 {% endif %}
 
 <!-- ============================================================ -->
-<!-- SET RESULTS -->
+<!-- MACRO: Listings-Tabelle (wiederverwendbar)                  -->
 <!-- ============================================================ -->
-{% if result.set_not_imported %}
-<div class="alert alert-warning">
-  <i class="bi bi-exclamation-triangle me-1"></i>
-  Set <strong>«{{ result.set_search_term }}»</strong> noch nicht importiert.
-  Bitte zuerst importieren:
-  <div class="mt-2 d-flex gap-2">
-    <a href="/sets/import-url" class="btn btn-sm btn-outline-primary">
-      <i class="bi bi-link-45deg me-1"></i>URL-Import
-    </a>
-    <a href="/sets/import" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-filetype-csv me-1"></i>CSV-Import
-    </a>
-  </div>
-</div>
-
-{% elif result.set_summaries is not none %}
-<h5 class="mb-3">
-  <i class="bi bi-collection me-1"></i>Set: {{ result.set_name }}
-  <a href="/sets/{{ result.set_id }}" class="btn btn-sm btn-outline-secondary ms-2">Set-Details</a>
-</h5>
-
-<div class="table-responsive">
-  <table class="table table-sm table-hover align-middle small">
-    <thead class="table-dark">
-      <tr>
-        <th>Karte</th>
-        <th>Nr.</th>
-        <th>RAW #</th>
-        <th>RAW ab</th>
-        <th>PSA 9 #</th>
-        <th>PSA 9 ab</th>
-        <th>PSA 10 #</th>
-        <th>PSA 10 ab</th>
-        <th>Links</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in result.set_summaries %}
-      <tr>
-        <td class="fw-semibold">{{ s.card.name }}</td>
-        <td><code>{{ s.card.card_number }}</code></td>
-        <td>{{ s.raw_count or '–' }}</td>
-        <td>
-          {% if s.raw_min %}<strong>{{ "%.2f"|format(s.raw_min) }} €</strong>{% else %}<span class="text-muted">–</span>{% endif %}
-        </td>
-        <td>{{ s.psa9_count or '–' }}</td>
-        <td>
-          {% if s.psa9_min %}{{ "%.2f"|format(s.psa9_min) }} €{% else %}<span class="text-muted">–</span>{% endif %}
-        </td>
-        <td>{{ s.psa10_count or '–' }}</td>
-        <td>
-          {% if s.psa10_min %}<span class="fw-bold text-primary">{{ "%.2f"|format(s.psa10_min) }} €</span>{% else %}<span class="text-muted">–</span>{% endif %}
-        </td>
-        <td class="text-nowrap">
-          {% if s.best_raw_url %}
-          <a href="{{ s.best_raw_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-secondary py-0 px-1 me-1" title="Günstigstes RAW">RAW</a>
-          {% endif %}
-          {% if s.best_psa9_url %}
-          <a href="{{ s.best_psa9_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-info py-0 px-1 me-1" title="Günstigstes PSA 9">9</a>
-          {% endif %}
-          {% if s.best_psa10_url %}
-          <a href="{{ s.best_psa10_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary py-0 px-1" title="Günstigstes PSA 10">10</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-{% if not result.set_summaries %}
-<div class="text-center py-4 text-muted">Keine Listings im gewählten Zeitraum gefunden.</div>
-{% endif %}
-
-<!-- ============================================================ -->
-<!-- CARD RESULTS -->
-<!-- ============================================================ -->
-{% elif result.listings %}
-
-<!-- Save as watchlist button -->
-{% if result.queries_run %}
+{% macro listings_table(listings_list, show_save_buttons=false, queries_list=[]) %}
+{% if show_save_buttons and queries_list %}
 <div class="mb-3 d-flex gap-2 flex-wrap">
-  {% for q in result.queries_run[:3] %}
+  {% for q in queries_list[:3] %}
   <form method="post" action="/smart-search/save-watchlist" class="d-inline">
     <input type="hidden" name="query" value="{{ q }}">
     <input type="hidden" name="name" value="{{ q }}">
@@ -259,17 +180,15 @@
   {% endfor %}
 </div>
 {% endif %}
-
 <div class="table-responsive">
   <table class="table table-sm table-hover align-middle small">
     <thead class="table-dark">
       <tr>
-        <th style="width:60px">Bild</th>
-        <th>Kategorie</th>
+        <th style="width:50px">Bild</th>
+        <th>Kat.</th>
         <th>Titel</th>
         <th>Typ</th>
         <th>Land</th>
-        <th>Zustand</th>
         <th>Preis</th>
         <th>Versand</th>
         <th>Gesamt</th>
@@ -278,45 +197,33 @@
       </tr>
     </thead>
     <tbody>
-      {% for r in result.listings %}
+      {% for r in listings_list %}
       {% set l = r.listing %}
       <tr class="{% if r.is_auction %}table-warning{% endif %}">
         <td>
           {% if l.image_url %}
-          <img src="{{ l.image_url }}" alt="" style="width:50px;height:50px;object-fit:contain">
+          <img src="{{ l.image_url }}" alt="" style="width:44px;height:44px;object-fit:contain">
           {% else %}<span class="text-muted">–</span>{% endif %}
         </td>
         <td>
-          {% set cat_color = {"RAW": "secondary", "PSA9": "info", "PSA10": "primary"}[r.category] %}
-          <span class="badge bg-{{ cat_color }} {% if cat_color == 'info' %}text-dark{% endif %}">
-            {{ r.category }}
-          </span>
+          {% set cat_color = {"RAW": "secondary", "PSA9": "info", "PSA10": "primary"}.get(r.category, "secondary") %}
+          <span class="badge bg-{{ cat_color }} {% if cat_color == 'info' %}text-dark{% endif %}">{{ r.category }}</span>
         </td>
-        <td class="text-truncate" style="max-width:260px" title="{{ l.title }}">{{ l.title }}</td>
-        <td class="text-nowrap small">
-          {% if r.is_auction %}
-            <span class="badge bg-warning text-dark">Auktion</span>
-          {% else %}
-            <span class="text-muted">Sofortkauf</span>
-          {% endif %}
+        <td class="text-truncate" style="max-width:240px" title="{{ l.title }}">{{ l.title }}</td>
+        <td class="small">
+          {% if r.is_auction %}<span class="badge bg-warning text-dark">Auktion</span>
+          {% else %}<span class="text-muted">Sofortkauf</span>{% endif %}
         </td>
         <td>
-          {% if l.location_country %}
-          <span class="badge bg-secondary">{{ l.location_country }}</span>
-          {% if l.location_city %}<span class="text-muted ms-1">{{ l.location_city }}</span>{% endif %}
-          {% else %}<span class="text-muted">–</span>{% endif %}
+          {% if l.location_country %}<span class="badge bg-secondary">{{ l.location_country }}</span>{% else %}<span class="text-muted">–</span>{% endif %}
         </td>
-        <td class="small text-muted">{{ l.condition or '–' }}</td>
         <td class="small">{{ "%.2f"|format(l.price) }} €</td>
         <td class="small">{{ "%.2f"|format(l.shipping) }} €</td>
         <td><strong class="text-primary">{{ "%.2f"|format(l.total_price) }} €</strong></td>
-        <td class="small text-muted text-nowrap">
-          {{ l.listing_date.strftime('%d.%m.%Y') if l.listing_date else '–' }}
-        </td>
+        <td class="small text-muted text-nowrap">{{ l.listing_date.strftime('%d.%m.%Y') if l.listing_date else '–' }}</td>
         <td>
           {% if l.url %}
-          <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer"
-            class="btn btn-sm btn-outline-primary py-0">
+          <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary py-0">
             <i class="bi bi-box-arrow-up-right"></i>
           </a>
           {% endif %}
@@ -326,7 +233,90 @@
     </tbody>
   </table>
 </div>
-<p class="text-muted small">{{ result.listings | length }} Listings angezeigt</p>
+<p class="text-muted small">{{ listings_list | length }} Listings angezeigt</p>
+{% endmacro %}
+
+<!-- ============================================================ -->
+<!-- SET RESULTS — importiert                                     -->
+<!-- ============================================================ -->
+{% if result.set_summaries is not none %}
+<h5 class="mb-3">
+  <i class="bi bi-collection me-1"></i>Set: {{ result.set_name }}
+  <a href="/sets/{{ result.set_id }}" class="btn btn-sm btn-outline-secondary ms-2">Set-Details</a>
+</h5>
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle small">
+    <thead class="table-dark">
+      <tr>
+        <th>Karte</th><th>Nr.</th>
+        <th>RAW #</th><th>RAW ab</th>
+        <th>PSA 9 #</th><th>PSA 9 ab</th>
+        <th>PSA 10 #</th><th>PSA 10 ab</th>
+        <th>Links</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in result.set_summaries %}
+      <tr>
+        <td class="fw-semibold">{{ s.card.name }}</td>
+        <td><code>{{ s.card.card_number }}</code></td>
+        <td>{{ s.raw_count or '–' }}</td>
+        <td>{% if s.raw_min %}<strong>{{ "%.2f"|format(s.raw_min) }} €</strong>{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td>{{ s.psa9_count or '–' }}</td>
+        <td>{% if s.psa9_min %}{{ "%.2f"|format(s.psa9_min) }} €{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td>{{ s.psa10_count or '–' }}</td>
+        <td>{% if s.psa10_min %}<span class="fw-bold text-primary">{{ "%.2f"|format(s.psa10_min) }} €</span>{% else %}<span class="text-muted">–</span>{% endif %}</td>
+        <td class="text-nowrap">
+          {% if s.best_raw_url %}<a href="{{ s.best_raw_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-secondary py-0 px-1 me-1">RAW</a>{% endif %}
+          {% if s.best_psa9_url %}<a href="{{ s.best_psa9_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-info py-0 px-1 me-1">9</a>{% endif %}
+          {% if s.best_psa10_url %}<a href="{{ s.best_psa10_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline-primary py-0 px-1">10</a>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if not result.set_summaries %}
+<div class="text-center py-4 text-muted">Keine Listings im gewählten Zeitraum gefunden.</div>
+{% endif %}
+
+{% if result.extra_listings %}
+<h6 class="mt-4 mb-2 text-muted"><i class="bi bi-search me-1"></i>Eigene Queries – Ergebnisse</h6>
+{{ listings_table(result.extra_listings) }}
+{% endif %}
+
+{% else %}
+
+<!-- ============================================================ -->
+<!-- SET nicht importiert — freie Set-Suche + Listings           -->
+<!-- ============================================================ -->
+{% if result.set_not_imported %}
+<div class="alert alert-warning mb-3">
+  <div class="d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    <div>
+      <strong>Set «{{ result.set_search_term }}» ist noch nicht importiert.</strong>
+      {% if result.free_set_search %}
+      Es wurde eine freie eBay-Set-Suche ausgeführt. Für genaue Kartenanalyse bitte Set importieren.
+      {% endif %}
+      <div class="mt-2 d-flex gap-2">
+        <a href="/sets/import-url" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-link-45deg me-1"></i>URL-Import
+        </a>
+        <a href="/sets/import" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-filetype-csv me-1"></i>CSV-Import
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ============================================================ -->
+<!-- LISTINGS (freie Set-Suche oder Einzelkarte/CM-Link)         -->
+<!-- ============================================================ -->
+{% if result.listings %}
+{{ listings_table(result.listings, show_save_buttons=true, queries_list=result.queries_run) }}
 
 {% else %}
 <div class="text-center py-5 text-muted">
@@ -340,6 +330,8 @@
   {% endif %}
 </div>
 {% endif %}
+
+{% endif %}{# end set_summaries vs. free/card search #}
 
 {% endif %}{# end if result #}
 {% endblock %}

@@ -430,7 +430,70 @@ def build_smart_queries(
 
 
 # ---------------------------------------------------------------------------
-# 4. eBay search runner
+# 4. Free set search (set not locally imported)
+# ---------------------------------------------------------------------------
+
+def build_free_set_queries(set_name: str, options: dict[str, Any]) -> list[dict[str, str]]:
+    """
+    Build generic eBay queries for a set that hasn't been imported locally.
+    Includes special-case query lists for well-known sets.
+    Respects include_raw / include_psa9 / include_psa10 options.
+    """
+    include_raw = options.get("include_raw", True)
+    include_psa9 = options.get("include_psa9", True)
+    include_psa10 = options.get("include_psa10", True)
+
+    name = set_name.strip()
+    nl = name.lower()
+    queries: list[dict[str, str]] = []
+
+    def _add(q: str, cat: str) -> None:
+        q = q.strip()
+        if q:
+            queries.append({"query": q, "category": cat, "source": "free_set_search"})
+
+    # --- Special case: Pokémon 151 ---
+    if nl == "151" or "151" in nl:
+        if include_raw:
+            _add("Pokemon 151", "RAW")
+            _add("Pokémon 151", "RAW")
+            _add("Scarlet Violet 151", "RAW")
+            _add("Scarlet & Violet 151", "RAW")
+        if include_psa9:
+            _add("151 PSA 9", "PSA9")
+        if include_psa10:
+            _add("151 PSA 10", "PSA10")
+
+    # --- Special case: Crown Zenith ---
+    elif "crown zenith" in nl or nl in ("crz",):
+        if include_raw:
+            _add("Crown Zenith Pokemon", "RAW")
+            _add("Crown Zenith Pokémon", "RAW")
+            _add("Crown Zenith", "RAW")
+            _add("Crown Zenith Galarian Gallery", "RAW")
+            _add("Crown Zenith GG", "RAW")
+            _add("Crown Zenith Gold", "RAW")
+        if include_psa9:
+            _add("Crown Zenith PSA 9", "PSA9")
+        if include_psa10:
+            _add("Crown Zenith PSA 10", "PSA10")
+
+    # --- Generic set ---
+    else:
+        if include_raw:
+            _add(f"{name} Pokemon", "RAW")
+            _add(f"{name} Pokémon", "RAW")
+            _add(name, "RAW")
+        if include_psa9:
+            _add(f"{name} PSA 9", "PSA9")
+        if include_psa10:
+            _add(f"{name} PSA 10", "PSA10")
+
+    return queries
+
+
+# ---------------------------------------------------------------------------
+# 5. eBay search runner
 # ---------------------------------------------------------------------------
 
 def run_smart_search(

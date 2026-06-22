@@ -25,7 +25,7 @@ import io
 from src.models import PokemonCard, PokemonSet, SeenListing, SetScan, SetScanResult, Watchlist
 from src.cardlist_importer import fetch_cardlist_url, parse_cardlist_html
 from src.set_scanner import build_card_queries, calculate_card_opportunity, run_set_scan
-from src.smart_search import build_smart_queries, detect_smart_search_input, run_smart_search, search_set_cards
+from src.smart_search import build_free_set_queries, build_smart_queries, detect_smart_search_input, run_smart_search, search_set_cards
 from src.web import auth, services
 
 logger = logging.getLogger(__name__)
@@ -1647,20 +1647,44 @@ async def smart_search_post(request: Request) -> HTMLResponse | RedirectResponse
         "options": options,
         "input_value": input_value,
         "set_not_imported": False,
+        "free_set_search": False,
         "set_summaries": None,
         "listings": [],
+        "extra_listings": [],
         "api_total": 0,
         "after_filter": 0,
         "queries_run": [],
+        "extra_queries_run": [],
         "errors": [],
         "form": dict(form),
     }
 
+    def _query_category(q: str) -> str:
+        """Detect category from query text for manual extra queries."""
+        qu = q.upper()
+        if "PSA 10" in qu or "PSA10" in qu:
+            return "PSA10"
+        if "PSA 9" in qu or "PSA9" in qu:
+            return "PSA9"
+        return "RAW"
+
+    def _append_extra_queries(queries: list) -> list:
+        """Append manual extra_queries to query list (deduplicated, category auto-detected)."""
+        existing = {q["query"] for q in queries}
+        for eq in extra_query_list:
+            if eq not in existing:
+                queries.append({"query": eq, "category": _query_category(eq), "source": "manual"})
+                existing.add(eq)
+        return queries
+
     # --- Set search ---
     if parsed["type"] == "set":
         set_name_or_code = parsed.get("detected_set_name") or input_value
+        logger.info(
+            "Smart Search set-mode: input=%r mode=%s",
+            input_value, search_mode,
+        )
         with get_session() as db:
-            # Try to find by code first, then by name (case-insensitive)
             pset = (
                 db.query(PokemonSet)
                 .filter(PokemonSet.code == set_name_or_code.lower())
@@ -1673,34 +1697,59 @@ async def smart_search_post(request: Request) -> HTMLResponse | RedirectResponse
                     .first()
                 )
 
-            if not pset:
+            cards = db.query(PokemonCard).filter_by(set_id=pset.id).order_by(PokemonCard.card_number).all() if pset else []
+
+            if pset and cards:
+                # Set is imported with cards — existing per-card analysis
+                logger.info("Smart Search set found locally: %s (%d cards)", pset.name, len(cards))
+                set_result = search_set_cards(pset, cards, options)
+                result_data["set_summaries"] = set_result["card_summaries"]
+                result_data["api_total"] = set_result["api_total"]
+                result_data["after_filter"] = sum(
+                    s["raw_count"] + s["psa9_count"] + s["psa10_count"]
+                    for s in set_result["card_summaries"]
+                )
+                result_data["set_name"] = pset.name
+                result_data["set_id"] = pset.id
+                # Extra manual queries run additionally as free search
+                if extra_query_list:
+                    extra_queries = _append_extra_queries([])
+                    extra_result = run_smart_search(extra_queries, options)
+                    result_data["extra_listings"] = extra_result["results"]
+                    result_data["extra_queries_run"] = extra_result["queries_run"]
+            else:
+                # Set not imported — run free set search + manual queries
+                logger.info(
+                    "Smart Search set not imported: %r → free set search", set_name_or_code
+                )
                 result_data["set_not_imported"] = True
                 result_data["set_search_term"] = set_name_or_code
-            else:
-                cards = db.query(PokemonCard).filter_by(set_id=pset.id).order_by(PokemonCard.card_number).all()
-                if not cards:
-                    result_data["set_not_imported"] = True
-                    result_data["set_search_term"] = set_name_or_code
-                else:
-                    set_result = search_set_cards(pset, cards, options)
-                    result_data["set_summaries"] = set_result["card_summaries"]
-                    result_data["api_total"] = set_result["api_total"]
-                    result_data["after_filter"] = sum(
-                        s["raw_count"] + s["psa9_count"] + s["psa10_count"]
-                        for s in set_result["card_summaries"]
+                result_data["free_set_search"] = True
+
+                queries = build_free_set_queries(set_name_or_code, options)
+                queries = _append_extra_queries(queries)
+                logger.info(
+                    "Smart Search free set queries (%d): %s",
+                    len(queries), [q["query"] for q in queries],
+                )
+                result_data["queries_run"] = [q["query"] for q in queries]
+
+                if queries:
+                    search_result = run_smart_search(queries, options)
+                    result_data["api_total"] = search_result["api_total"]
+                    result_data["after_filter"] = search_result["after_filter"]
+                    result_data["errors"] = search_result["errors"]
+                    result_data["listings"] = search_result["results"]
+                    result_data["queries_run"] = search_result["queries_run"]
+                    logger.info(
+                        "Smart Search free set result: api=%d after_filter=%d",
+                        search_result["api_total"], search_result["after_filter"],
                     )
-                    result_data["set_name"] = pset.name
-                    result_data["set_id"] = pset.id
 
     # --- Card / Cardmarket URL search ---
     else:
         queries = build_smart_queries(parsed, options)
-        # Append manual extra queries (RAW category, deduplicated)
-        existing_qs = {q["query"] for q in queries}
-        for eq in extra_query_list:
-            if eq not in existing_qs:
-                queries.append({"query": eq, "category": "RAW", "source": "manual"})
-                existing_qs.add(eq)
+        queries = _append_extra_queries(queries)
         result_data["queries_run"] = [q["query"] for q in queries]
 
         if not queries:
