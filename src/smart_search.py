@@ -559,8 +559,7 @@ def run_smart_search(
                 if cl.is_bad_match:
                     continue
 
-                buying_options = l.raw.get("buyingOptions") or []
-                is_auction = "AUCTION" in buying_options and "FIXED_PRICE" not in buying_options
+                is_auction = l.listing_type == "AUCTION"
 
                 results.append({
                     "listing": l,

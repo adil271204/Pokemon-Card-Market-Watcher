@@ -122,18 +122,37 @@
           <thead class="table-light">
             <tr>
               <th>Titel</th>
+              <th>Typ</th>
               <th>Preis</th>
               <th>Land</th>
-              <th>Zuerst gesehen</th>
+              <th>Gesehen</th>
               <th>Link</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {% for l in recent_listings %}
-              <tr>
-                <td class="text-truncate" style="max-width:240px" title="{{ l.title }}">{{ l.title }}</td>
-                <td>{{ l.total_price }} {{ l.currency }}</td>
+            {% set lt = l.listing_type or 'UNKNOWN' %}
+              <tr class="{% if lt == 'AUCTION' %}table-warning{% endif %}">
+                <td class="text-truncate" style="max-width:220px" title="{{ l.title }}">{{ l.title }}</td>
+                <td class="text-nowrap">
+                  {% if lt == 'AUCTION' %}
+                    <span class="badge bg-warning text-dark">Auktion</span>
+                    {% if l.bid_count is not none %}<span class="text-muted small ms-1">{{ l.bid_count }} Geb.</span>{% endif %}
+                  {% elif lt == 'FIXED_PRICE' %}
+                    <span class="badge bg-primary">Sofortkauf</span>
+                  {% else %}
+                    <span class="badge bg-secondary">–</span>
+                  {% endif %}
+                  {% if l.best_offer_available %}<span class="badge bg-info text-dark ms-1">Preisvorschlag</span>{% endif %}
+                </td>
+                <td class="small text-nowrap">
+                  {% if lt == 'AUCTION' and l.current_bid_price %}
+                    <span class="text-warning fw-semibold">{{ "%.2f"|format(l.current_bid_price) }} €</span>
+                  {% else %}
+                    {{ "%.2f"|format(l.total_price) if l.total_price else '–' }} {{ l.currency }}
+                  {% endif %}
+                </td>
                 <td class="small text-nowrap">
                   {% if l.location_country %}
                     <span class="badge bg-secondary">{{ l.location_country }}</span>
@@ -149,7 +168,7 @@
                       <i class="bi bi-box-arrow-up-right"></i>
                     </a>
                   {% else %}
-                    <span class="badge bg-secondary">Kein Link</span>
+                    <span class="badge bg-secondary">–</span>
                   {% endif %}
                 </td>
                 <td>

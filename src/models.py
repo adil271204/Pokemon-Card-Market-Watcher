@@ -77,6 +77,13 @@ class SeenListing(Base):
     raw_payload_json = Column(Text, nullable=True)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     deleted_at = Column(DateTime(timezone=True), nullable=True, default=None)
+    # Buying / listing type fields (added in migrate_listing_type_fields.py)
+    listing_type = Column(String(20), nullable=True)          # FIXED_PRICE | AUCTION | UNKNOWN
+    buying_options_json = Column(Text, nullable=True)         # JSON array of buyingOptions
+    best_offer_available = Column(Boolean, nullable=True, default=False)
+    current_bid_price = Column(Float, nullable=True)
+    bid_count = Column(Integer, nullable=True)
+    item_end_date = Column(DateTime(timezone=True), nullable=True)
 
     watchlist = relationship("Watchlist", back_populates="seen_listings")
 

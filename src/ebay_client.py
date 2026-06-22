@@ -73,6 +73,14 @@ class RawListing:
     location_state: str | None
     location_raw: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
+    # Buying / auction fields
+    buying_options: list[str] = field(default_factory=list)
+    listing_type: str = "UNKNOWN"          # "FIXED_PRICE" | "AUCTION" | "UNKNOWN"
+    best_offer_available: bool = False
+    current_bid_price: float | None = None
+    bid_count: int | None = None
+    item_end_date: datetime | None = None
+    display_price: float = 0.0             # bid price for auctions, price for fixed
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +199,33 @@ def _parse_listing(raw: dict[str, Any]) -> RawListing:
         norm_country = "GB"
     location_country = norm_country or None
 
+    # Buying options and listing type
+    buying_options: list[str] = raw.get("buyingOptions") or []
+    if isinstance(buying_options, str):
+        buying_options = [buying_options]
+    if "AUCTION" in buying_options:
+        listing_type = "AUCTION"
+    elif "FIXED_PRICE" in buying_options:
+        listing_type = "FIXED_PRICE"
+    else:
+        listing_type = "UNKNOWN"
+    best_offer_available = "BEST_OFFER" in buying_options
+
+    current_bid_price: float | None = None
+    bid_count: int | None = None
+    item_end_date: datetime | None = None
+    if listing_type == "AUCTION":
+        bid_raw = raw.get("currentBidPrice") or {}
+        if bid_raw.get("value"):
+            current_bid_price = float(bid_raw["value"])
+        if raw.get("bidCount") is not None:
+            bid_count = int(raw["bidCount"])
+        end_str = raw.get("itemEndDate") or ""
+        if end_str:
+            item_end_date = _parse_date(end_str)
+
+    display_price = current_bid_price if current_bid_price is not None else price
+
     return RawListing(
         ebay_item_id=str(raw["itemId"]),
         title=raw.get("title", ""),
@@ -211,6 +246,13 @@ def _parse_listing(raw: dict[str, Any]) -> RawListing:
         location_state=item_location.get("stateOrProvince") or None,
         location_raw=item_location,
         raw=raw,
+        buying_options=buying_options,
+        listing_type=listing_type,
+        best_offer_available=best_offer_available,
+        current_bid_price=current_bid_price,
+        bid_count=bid_count,
+        item_end_date=item_end_date,
+        display_price=display_price,
     )
 
 

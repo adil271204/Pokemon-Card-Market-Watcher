@@ -192,6 +192,8 @@
         <th>Preis</th>
         <th>Versand</th>
         <th>Gesamt</th>
+        <th>Gebote</th>
+        <th>Endet</th>
         <th>Datum</th>
         <th></th>
       </tr>
@@ -199,7 +201,8 @@
     <tbody>
       {% for r in listings_list %}
       {% set l = r.listing %}
-      <tr class="{% if r.is_auction %}table-warning{% endif %}">
+      {% set lt = l.listing_type or ('AUCTION' if r.is_auction else 'FIXED_PRICE') %}
+      <tr class="{% if lt == 'AUCTION' %}table-warning{% endif %}">
         <td>
           {% if l.image_url %}
           <img src="{{ l.image_url }}" alt="" style="width:44px;height:44px;object-fit:contain">
@@ -209,17 +212,42 @@
           {% set cat_color = {"RAW": "secondary", "PSA9": "info", "PSA10": "primary"}.get(r.category, "secondary") %}
           <span class="badge bg-{{ cat_color }} {% if cat_color == 'info' %}text-dark{% endif %}">{{ r.category }}</span>
         </td>
-        <td class="text-truncate" style="max-width:240px" title="{{ l.title }}">{{ l.title }}</td>
-        <td class="small">
-          {% if r.is_auction %}<span class="badge bg-warning text-dark">Auktion</span>
-          {% else %}<span class="text-muted">Sofortkauf</span>{% endif %}
+        <td class="text-truncate" style="max-width:220px" title="{{ l.title }}">{{ l.title }}</td>
+        <td class="text-nowrap">
+          {% if lt == 'AUCTION' %}
+            <span class="badge bg-warning text-dark">Auktion</span>
+          {% elif lt == 'FIXED_PRICE' %}
+            <span class="badge bg-primary">Sofortkauf</span>
+          {% else %}
+            <span class="badge bg-secondary">–</span>
+          {% endif %}
+          {% if l.best_offer_available %}<span class="badge bg-info text-dark ms-1">Preisvorschlag</span>{% endif %}
         </td>
         <td>
           {% if l.location_country %}<span class="badge bg-secondary">{{ l.location_country }}</span>{% else %}<span class="text-muted">–</span>{% endif %}
         </td>
-        <td class="small">{{ "%.2f"|format(l.price) }} €</td>
+        <td class="small text-nowrap">
+          {% if lt == 'AUCTION' and l.current_bid_price %}
+            <span class="text-warning fw-semibold">{{ "%.2f"|format(l.current_bid_price) }} €</span>
+            <span class="text-muted" style="font-size:.75em">Gebot</span>
+          {% else %}
+            {{ "%.2f"|format(l.price) }} €
+          {% endif %}
+        </td>
         <td class="small">{{ "%.2f"|format(l.shipping) }} €</td>
-        <td><strong class="text-primary">{{ "%.2f"|format(l.total_price) }} €</strong></td>
+        <td class="small text-nowrap">
+          {% if lt == 'AUCTION' and l.current_bid_price %}
+            <strong class="text-warning">{{ "%.2f"|format(l.current_bid_price + l.shipping) }} €</strong>
+          {% else %}
+            <strong class="text-primary">{{ "%.2f"|format(l.total_price) }} €</strong>
+          {% endif %}
+        </td>
+        <td class="small text-center">
+          {% if lt == 'AUCTION' %}{{ l.bid_count if l.bid_count is not none else '–' }}{% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
+        <td class="small text-nowrap text-muted">
+          {% if l.item_end_date %}{{ l.item_end_date.strftime('%d.%m. %H:%M') }}{% else %}<span class="text-muted">–</span>{% endif %}
+        </td>
         <td class="small text-muted text-nowrap">{{ l.listing_date.strftime('%d.%m.%Y') if l.listing_date else '–' }}</td>
         <td>
           {% if l.url %}

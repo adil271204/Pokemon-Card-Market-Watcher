@@ -140,6 +140,7 @@ def get_listings(
     price_max: float | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    listing_type: str | None = None,
     sort: str = "first_seen_at",
     page: int = 1,
     per_page: int = 50,
@@ -158,6 +159,8 @@ def get_listings(
         q = q.filter(SeenListing.first_seen_at >= date_from)
     if date_to:
         q = q.filter(SeenListing.first_seen_at <= date_to)
+    if listing_type and listing_type in ("FIXED_PRICE", "AUCTION"):
+        q = q.filter(SeenListing.listing_type == listing_type)
 
     total = q.count()
 

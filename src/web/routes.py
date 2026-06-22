@@ -38,6 +38,36 @@ templates = Jinja2Templates(directory="src/web/templates")
 # ---------------------------------------------------------------------------
 
 
+def _effective_listing_type(l: Any) -> str:
+    """Derive listing type for a SeenListing row, with fallback for older rows."""
+    lt = getattr(l, "listing_type", None)
+    if lt:
+        return lt
+    # Fallback: parse buying_options_json or raw_payload_json
+    opts_json = getattr(l, "buying_options_json", None)
+    if opts_json:
+        try:
+            opts = json.loads(opts_json)
+            if "AUCTION" in opts:
+                return "AUCTION"
+            if "FIXED_PRICE" in opts:
+                return "FIXED_PRICE"
+        except Exception:
+            pass
+    raw_json = getattr(l, "raw_payload_json", None)
+    if raw_json:
+        try:
+            raw = json.loads(raw_json)
+            opts = raw.get("buyingOptions") or []
+            if "AUCTION" in opts:
+                return "AUCTION"
+            if "FIXED_PRICE" in opts:
+                return "FIXED_PRICE"
+        except Exception:
+            pass
+    return "UNKNOWN"
+
+
 def _render(request: Request, template: str, ctx: dict[str, Any] | None = None) -> HTMLResponse:
     # Starlette 1.x new API: request is the first arg, not in context dict
     context: dict[str, Any] = {
@@ -486,6 +516,12 @@ def _run_backfill(
             location_state=listing.location_state,
             location_raw_json=json.dumps(listing.location_raw) if listing.location_raw else None,
             raw_payload_json=json.dumps(listing.raw),
+            listing_type=listing.listing_type,
+            buying_options_json=json.dumps(listing.buying_options),
+            best_offer_available=listing.best_offer_available,
+            current_bid_price=listing.current_bid_price,
+            bid_count=listing.bid_count,
+            item_end_date=listing.item_end_date,
         )
         db_session.add(seen)
         stats["saved"] += 1
@@ -658,6 +694,7 @@ async def listings(request: Request) -> HTMLResponse | RedirectResponse:
     price_max = _parse_optional_float(params.get("price_max"))
     date_from = _parse_optional_date(params.get("date_from"))
     date_to = _parse_optional_date(params.get("date_to"))
+    listing_type_filter = params.get("listing_type") or None
     sort = params.get("sort", "first_seen_at")
     page = max(1, int(params.get("page", 1)))
     per_page = 50
@@ -672,12 +709,12 @@ async def listings(request: Request) -> HTMLResponse | RedirectResponse:
             price_max=price_max,
             date_from=date_from,
             date_to=date_to,
+            listing_type=listing_type_filter,
             sort=sort,
             page=page,
             per_page=per_page,
         )
         watchlists_all = services.get_all_watchlists(db)
-        # Build watchlist id→name map
         wl_map = {wl.id: wl.name for wl in watchlists_all}
     finally:
         db.close()
@@ -699,6 +736,7 @@ async def listings(request: Request) -> HTMLResponse | RedirectResponse:
             "price_max": price_max or "",
             "date_from": params.get("date_from", ""),
             "date_to": params.get("date_to", ""),
+            "listing_type": listing_type_filter or "",
             "sort": sort,
         },
     })
