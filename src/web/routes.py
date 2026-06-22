@@ -695,6 +695,7 @@ async def listings(request: Request) -> HTMLResponse | RedirectResponse:
     date_from = _parse_optional_date(params.get("date_from"))
     date_to = _parse_optional_date(params.get("date_to"))
     listing_type_filter = params.get("listing_type") or None
+    country_filter = (params.get("country") or "").strip().upper() or None
     sort = params.get("sort", "first_seen_at")
     page = max(1, int(params.get("page", 1)))
     per_page = 50
@@ -710,6 +711,7 @@ async def listings(request: Request) -> HTMLResponse | RedirectResponse:
             date_from=date_from,
             date_to=date_to,
             listing_type=listing_type_filter,
+            country=country_filter,
             sort=sort,
             page=page,
             per_page=per_page,
@@ -737,6 +739,7 @@ async def listings(request: Request) -> HTMLResponse | RedirectResponse:
             "date_from": params.get("date_from", ""),
             "date_to": params.get("date_to", ""),
             "listing_type": listing_type_filter or "",
+            "country": country_filter or "",
             "sort": sort,
         },
     })

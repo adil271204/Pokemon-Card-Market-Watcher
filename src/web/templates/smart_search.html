@@ -166,7 +166,7 @@
 <!-- ============================================================ -->
 <!-- MACRO: Listings-Tabelle (wiederverwendbar)                  -->
 <!-- ============================================================ -->
-{% macro listings_table(listings_list, show_save_buttons=false, queries_list=[]) %}
+{% macro listings_table(listings_list, show_save_buttons=false, queries_list=[], table_id="ssTable") %}
 {% if show_save_buttons and queries_list %}
 <div class="mb-3 d-flex gap-2 flex-wrap">
   {% for q in queries_list[:3] %}
@@ -180,8 +180,15 @@
   {% endfor %}
 </div>
 {% endif %}
+<!-- Land-Schnellfilter -->
+<div class="mb-2 d-flex align-items-center gap-2 flex-wrap">
+  <span class="small text-muted">Land:</span>
+  <button type="button" class="btn btn-sm btn-secondary" id="{{ table_id }}-all" onclick="filterCountry('{{ table_id }}', '')">Alle Länder</button>
+  <button type="button" class="btn btn-sm btn-outline-warning" id="{{ table_id }}-de" onclick="filterCountry('{{ table_id }}', 'DE')">🇩🇪 Nur Deutschland</button>
+  <span class="badge bg-warning text-dark d-none" id="{{ table_id }}-badge"><i class="bi bi-funnel-fill me-1"></i>Filter aktiv: Deutschland</span>
+</div>
 <div class="table-responsive">
-  <table class="table table-sm table-hover align-middle small">
+  <table class="table table-sm table-hover align-middle small" id="{{ table_id }}">
     <thead class="table-dark">
       <tr>
         <th style="width:50px">Bild</th>
@@ -202,7 +209,7 @@
       {% for r in listings_list %}
       {% set l = r.listing %}
       {% set lt = l.listing_type or ('AUCTION' if r.is_auction else 'FIXED_PRICE') %}
-      <tr class="{% if lt == 'AUCTION' %}table-warning{% endif %}">
+      <tr class="{% if lt == 'AUCTION' %}table-warning{% endif %}" data-country="{{ l.location_country or '' }}">
         <td>
           {% if l.image_url %}
           <img src="{{ l.image_url }}" alt="" style="width:44px;height:44px;object-fit:contain">
@@ -362,4 +369,25 @@
 {% endif %}{# end set_summaries vs. free/card search #}
 
 {% endif %}{# end if result #}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterCountry(tableId, country) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach(row => {
+    const rowCountry = row.dataset.country || '';
+    row.style.display = (!country || rowCountry === country) ? '' : 'none';
+  });
+  // Button states
+  const allBtn = document.getElementById(tableId + '-all');
+  const deBtn  = document.getElementById(tableId + '-de');
+  const badge  = document.getElementById(tableId + '-badge');
+  if (allBtn) { allBtn.className = country ? 'btn btn-sm btn-outline-secondary' : 'btn btn-sm btn-secondary'; }
+  if (deBtn)  { deBtn.className  = country === 'DE' ? 'btn btn-sm btn-warning text-dark' : 'btn btn-sm btn-outline-warning'; }
+  if (badge)  { badge.classList.toggle('d-none', country !== 'DE'); }
+}
+</script>
 {% endblock %}

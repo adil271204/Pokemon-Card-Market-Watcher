@@ -141,6 +141,7 @@ def get_listings(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     listing_type: str | None = None,
+    country: str | None = None,
     sort: str = "first_seen_at",
     page: int = 1,
     per_page: int = 50,
@@ -161,6 +162,8 @@ def get_listings(
         q = q.filter(SeenListing.first_seen_at <= date_to)
     if listing_type and listing_type in ("FIXED_PRICE", "AUCTION"):
         q = q.filter(SeenListing.listing_type == listing_type)
+    if country:
+        q = q.filter(SeenListing.location_country == country.upper())
 
     total = q.count()
 
