@@ -89,6 +89,13 @@
       </div>
     </div>
 
+    <div class="mb-3">
+      <label class="form-label small fw-semibold">Eigene Queries (optional, eine pro Zeile)</label>
+      <textarea name="extra_queries" class="form-control form-control-sm font-monospace"
+        rows="3" placeholder="Giratina VSTAR GG69&#10;Giratina Crown Zenith PSA 10">{{ result.form.extra_queries if result and result.form else '' }}</textarea>
+      <div class="form-text">Werden zusätzlich zu den automatisch generierten Queries ausgeführt (Kategorie: RAW).</div>
+    </div>
+
     <button type="submit" class="btn btn-primary">
       <i class="bi bi-lightning-charge me-1"></i>Suchen
     </button>
@@ -101,23 +108,36 @@
 
 <!-- Detection info -->
 <div class="card mb-3">
-  <div class="card-body py-2 small d-flex flex-wrap gap-3 align-items-center">
-    <span><strong>Erkannter Typ:</strong>
-      {% set type_labels = {"card": "Einzelkarte", "set": "Set", "cardmarket_url": "Cardmarket-Link", "unknown": "Unbekannt"} %}
-      <span class="badge bg-primary">{{ type_labels.get(parsed.type, parsed.type) }}</span>
-    </span>
-    {% if parsed.detected_card_name %}
-    <span><strong>Karte:</strong> {{ parsed.detected_card_name }}</span>
+  <div class="card-body py-2 small">
+    <div class="d-flex flex-wrap gap-3 align-items-center mb-1">
+      <span><strong>Typ:</strong>
+        {% set type_labels = {"card": "Einzelkarte", "set": "Set", "cardmarket_url": "Cardmarket-Link", "unknown": "Unbekannt"} %}
+        <span class="badge bg-primary">{{ type_labels.get(parsed.type, parsed.type) }}</span>
+      </span>
+      {% if parsed.detected_card_name %}
+      <span><strong>Karte:</strong> {{ parsed.detected_card_name }}</span>
+      {% endif %}
+      {% if parsed.detected_set_name %}
+      <span><strong>Set:</strong> {{ parsed.detected_set_name }}</span>
+      {% endif %}
+      {% if parsed.detected_card_number %}
+      <span><strong>Nummer:</strong> <code>{{ parsed.detected_card_number }}</code></span>
+      {% endif %}
+      {% set cm = parsed.cardmarket if parsed.cardmarket is defined else {} %}
+      {% if cm.set_code_hint %}
+      <span><strong>Set-Code:</strong> <code class="text-warning">{{ cm.set_code_hint }}</code></span>
+      {% endif %}
+      <span><strong>API:</strong> {{ result.api_total }}</span>
+      <span><strong>Nach Filter:</strong> <span class="badge {% if result.after_filter > 0 %}bg-success{% else %}bg-secondary{% endif %}">{{ result.after_filter }}</span></span>
+      <span><strong>Zeitraum:</strong> {{ result.options.lookback_hours }} Std.</span>
+    </div>
+    {% if cm.card_slug %}
+    <div class="text-muted">
+      <strong>CM-Slug:</strong> <code>{{ cm.card_slug }}</code>
+      {% if cm.set_code_hint %} → Set-Code: <code>{{ cm.set_code_hint }}</code>{% endif %}
+      {% if cm.card_number_hint %} Kartennummer: <code>{{ cm.card_number_hint }}</code>{% endif %}
+    </div>
     {% endif %}
-    {% if parsed.detected_set_name %}
-    <span><strong>Set:</strong> {{ parsed.detected_set_name }}</span>
-    {% endif %}
-    {% if parsed.detected_card_number %}
-    <span><strong>Nummer:</strong> <code>{{ parsed.detected_card_number }}</code></span>
-    {% endif %}
-    <span><strong>API-Treffer:</strong> {{ result.api_total }}</span>
-    <span><strong>Nach Filter:</strong> <span class="badge bg-success">{{ result.after_filter }}</span></span>
-    <span><strong>Zeitraum:</strong> {{ result.options.lookback_hours }} Std.</span>
   </div>
 </div>
 
@@ -312,6 +332,12 @@
 <div class="text-center py-5 text-muted">
   <i class="bi bi-search display-4 d-block mb-3"></i>
   Keine Listings im gewählten Zeitraum und Filter gefunden.
+  {% if result.api_total == 0 %}
+  <div class="small mt-2">
+    <strong>0 API-Treffer</strong> – die generierten Queries lieferten kein Ergebnis auf eBay.<br>
+    Tipps: Zeitraum verlängern, andere Schreibweise verwenden, oder eigene Query oben eintragen.
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 

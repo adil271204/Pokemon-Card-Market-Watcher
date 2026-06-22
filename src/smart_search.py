@@ -44,11 +44,13 @@ _SET_SLUG_REPLACEMENTS = [
     (r"\bDiamond-Pearl-", "DP "),
 ]
 
-# Variant suffixes to strip from card name
-_VARIANT_SUFFIX_RE = re.compile(r"\s*-?V\d+$", re.IGNORECASE)
-
-# Card number patterns from Cardmarket slugs: MEW199, SVI001, etc.
-_CM_NUMBER_RE = re.compile(r"\b([A-Z]{2,4})(\d{1,3})\b")
+# Cardmarket product code patterns
+# Compound: SET_CODE (2-4 letters) + CARD_PREFIX (GG|TG|IR|UT) + DIGITS  e.g. CRZGG69
+_CM_COMPOUND_RE = re.compile(r'^([A-Z]{2,4})(GG|TG|IR|UT)(\d{1,3})$')
+# Simple: SET_CODE (2-5 letters) + DIGITS  e.g. MEW199, SV3EN123
+_CM_SIMPLE_RE = re.compile(r'^([A-Z]{2,5})(\d{1,3})$')
+# Bare card number: GG69, TG17, 199
+_CM_CARDNUM_RE = re.compile(r'^(GG|TG|IR|UT)?(\d{1,3})$')
 
 # Pokemon card keywords that increase confidence it's a card (not set) search
 _CARD_KW_RE = re.compile(
@@ -172,7 +174,7 @@ def parse_cardmarket_url(url: str) -> dict[str, Any]:
         card_slug = path_parts[-1] if path_parts else ""
 
     set_name = _slug_to_name(set_slug)
-    card_name_raw, card_number_hint = _parse_card_slug(card_slug)
+    card_name_raw, card_number_hint, code_parsed = _parse_card_slug(card_slug)
     card_name = card_name_raw
 
     # Optional: try a single GET to fetch meta title (title tag / og:title)
@@ -200,7 +202,7 @@ def parse_cardmarket_url(url: str) -> dict[str, Any]:
         logger.debug("Cardmarket fetch failed (slug fallback used): %s", exc)
         warnings.append("Cardmarket-Seite konnte nicht geladen werden – Suche basiert auf URL-Slug.")
 
-    queries = _build_cm_queries(card_name, set_name, card_number_hint)
+    queries = _build_cm_queries(card_name, set_name, card_number_hint, code_parsed)
 
     return {
         "card_name": card_name,
@@ -208,45 +210,133 @@ def parse_cardmarket_url(url: str) -> dict[str, Any]:
         "set_slug": set_slug,
         "card_slug": card_slug,
         "card_number_hint": card_number_hint,
+        "set_code_hint": (code_parsed or {}).get("set_code_hint", ""),
+        "code_parsed": code_parsed,
         "queries": queries,
         "warnings": warnings,
     }
 
 
+def parse_cardmarket_product_code(code: str) -> dict[str, Any]:
+    """
+    Parse a Cardmarket product code token into set_code_hint + card_number_hint.
+
+    Examples:
+      CRZGG69  → set_code_hint=CRZ, card_number_hint=GG69
+      MEW199   → set_code_hint=MEW, card_number_hint=199
+      SWSHTG17 → set_code_hint=SWSH, card_number_hint=TG17
+      GG69     → set_code_hint='',  card_number_hint=GG69
+      TG17     → set_code_hint='',  card_number_hint=TG17
+      199      → set_code_hint='',  card_number_hint=199
+    """
+    code = code.strip().upper()
+    warnings: list[str] = []
+
+    # Compound first: CRZGG69 → CRZ + GG69
+    m = _CM_COMPOUND_RE.match(code)
+    if m:
+        return {"raw_code": code, "set_code_hint": m.group(1),
+                "card_number_hint": m.group(2) + m.group(3), "warnings": warnings}
+
+    # Bare card number prefix (GG69, TG17) – check BEFORE simple set-code match
+    # so GG is not treated as a set code
+    m = _CM_CARDNUM_RE.match(code)
+    if m and m.group(1):  # has known prefix (GG/TG/IR/UT) + digits
+        return {"raw_code": code, "set_code_hint": "",
+                "card_number_hint": m.group(1) + m.group(2), "warnings": warnings}
+
+    # Simple: MEW199 → MEW + 199
+    m = _CM_SIMPLE_RE.match(code)
+    if m:
+        return {"raw_code": code, "set_code_hint": m.group(1),
+                "card_number_hint": m.group(2), "warnings": warnings}
+
+    # Pure number: 199
+    m = _CM_CARDNUM_RE.match(code)
+    if m:
+        return {"raw_code": code, "set_code_hint": "",
+                "card_number_hint": m.group(2), "warnings": warnings}
+
+    warnings.append(f"Unbekanntes Cardmarket-Code-Format: {code}")
+    return {"raw_code": code, "set_code_hint": "", "card_number_hint": code, "warnings": warnings}
+
+
+def _is_cm_product_code(segment: str) -> bool:
+    s = segment.upper()
+    return bool(_CM_COMPOUND_RE.match(s) or _CM_SIMPLE_RE.match(s))
+
+
 def _slug_to_name(slug: str) -> str:
     """Convert a Cardmarket set slug to a human-readable name."""
-    name = slug.replace("-", " ")
-    # Normalize "Scarlet Violet 151" → keep as is, looks fine
-    return name.strip()
+    return slug.replace("-", " ").strip()
 
 
-def _parse_card_slug(slug: str) -> tuple[str, str]:
+def _parse_card_slug(slug: str) -> tuple[str, str, dict | None]:
     """
-    Extract card name and number hint from card slug.
-    E.g. "Charizard-ex-V3-MEW199" → ("Charizard ex", "MEW199" → "199")
+    Extract card name, number hint, and parsed code dict from a card slug.
+    E.g. "Giratina-VSTAR-CRZGG69" → ("Giratina VSTAR", "GG69", {set_code_hint: "CRZ", ...})
+         "Charizard-ex-V3-MEW199" → ("Charizard ex", "199", {set_code_hint: "MEW", ...})
     """
-    number_hint = ""
-    m = _CM_NUMBER_RE.search(slug)
-    if m:
-        number_hint = m.group(2)  # numeric part only
-        slug = slug[:m.start()].rstrip("-")
+    segments = slug.split("-")
 
-    # Remove variant suffix V2, V3 etc.
-    slug = _VARIANT_SUFFIX_RE.sub("", slug)
+    code_parsed: dict | None = None
+    code_idx: int | None = None
 
-    # Replace hyphens with spaces, keep "ex", "GX", "VMAX" etc.
-    name = slug.replace("-", " ").strip()
-    return name, number_hint
+    # Scan right-to-left for the first segment that looks like a product code
+    for i in range(len(segments) - 1, -1, -1):
+        if _is_cm_product_code(segments[i]):
+            code_parsed = parse_cardmarket_product_code(segments[i])
+            code_idx = i
+            break
+
+    name_segments = segments[:code_idx] if code_idx is not None else segments[:]
+
+    # Remove Cardmarket variant suffixes V2, V3 etc. (not Pokémon types V/VMAX/VSTAR)
+    if name_segments and re.match(r'^V\d+$', name_segments[-1], re.IGNORECASE):
+        name_segments = name_segments[:-1]
+
+    name = " ".join(s for s in name_segments if s).strip()
+    number_hint = code_parsed["card_number_hint"] if code_parsed else ""
+
+    return name, number_hint, code_parsed
 
 
-def _build_cm_queries(card_name: str, set_name: str, number_hint: str) -> list[str]:
-    queries = []
-    if card_name and set_name:
-        queries.append(f"{card_name} {set_name}")
-    if card_name and number_hint:
-        queries.append(f"{card_name} {number_hint}")
-    if card_name:
-        queries.append(f"{card_name} Pokemon")
+def _build_cm_queries(
+    card_name: str,
+    set_name: str,
+    card_number_hint: str,
+    code_parsed: dict | None = None,
+) -> list[str]:
+    """Build eBay-friendly search queries with special cases for known set codes."""
+    queries: list[str] = []
+    set_code = (code_parsed or {}).get("set_code_hint", "").upper()
+    num = card_number_hint.upper() if card_number_hint else ""
+
+    # Special case: Crown Zenith Galarian Gallery (CRZGG…)
+    is_crz_gg = set_code == "CRZ" and num.startswith("GG")
+    # Special case: Pokémon 151 (MEW set code)
+    is_151 = set_code == "MEW"
+
+    if is_crz_gg:
+        if card_name and num:
+            queries.append(f"{card_name} {num}")                        # Giratina VSTAR GG69
+        if card_name:
+            queries.append(f"{card_name} Galarian Gallery")             # Giratina VSTAR Galarian Gallery
+        if card_name and num:
+            queries.append(f"{card_name} Crown Zenith {num}")           # Giratina VSTAR Crown Zenith GG69
+    elif is_151:
+        if card_name:
+            queries.append(f"{card_name} 151 {num}".strip())            # Charizard ex 151 006
+            queries.append(f"{card_name} {num}".strip())                # Charizard ex 006
+            queries.append(f"{card_name} SV 151")                       # Charizard ex SV 151
+    else:
+        if card_name and set_name:
+            queries.append(f"{card_name} {set_name}")
+        if card_name and num:
+            queries.append(f"{card_name} {num}")
+        if card_name and not queries:
+            queries.append(f"{card_name} Pokemon")
+
     return queries
 
 
@@ -270,12 +360,14 @@ def build_smart_queries(
     set_name = parsed_input.get("detected_set_name", "").strip()
     card_number = parsed_input.get("detected_card_number", "").strip()
 
-    # For cardmarket URLs, prefer the CM-derived names
+    # For cardmarket URLs, prefer the CM-derived names and code_parsed
+    code_parsed: dict | None = None
     if input_type == "cardmarket_url" and "cardmarket" in parsed_input:
         cm = parsed_input["cardmarket"]
         card_name = cm.get("card_name", card_name)
         set_name = cm.get("set_name", set_name)
         card_number = cm.get("card_number_hint", card_number)
+        code_parsed = cm.get("code_parsed")
 
     if not card_name and not set_name:
         card_name = parsed_input.get("normalized_input", "")
@@ -287,33 +379,54 @@ def build_smart_queries(
         if q:
             queries.append({"query": q, "category": cat, "source": "smart_search"})
 
-    if include_raw:
-        if card_name and card_number and set_name:
-            _add(f"{card_name} {card_number} {set_name}", "RAW")
-        if card_name and set_name:
-            _add(f"{card_name} {set_name}", "RAW")
-        if card_name and card_number:
-            _add(f"{card_name} {card_number}", "RAW")
-        if card_name and not card_number and not set_name:
-            _add(f"{card_name} Pokemon", "RAW")
+    # Use CM-aware query builder for raw queries when we have structured data
+    if input_type == "cardmarket_url" and card_name:
+        cm_raw_queries = _build_cm_queries(card_name, set_name, card_number, code_parsed)
+        if include_raw:
+            for q in cm_raw_queries:
+                _add(q, "RAW")
+        if include_psa9:
+            for q in cm_raw_queries[:2]:  # take the best 1-2 queries for graded
+                _add(f"{q} PSA 9", "PSA9")
+        if include_psa10:
+            for q in cm_raw_queries[:2]:
+                _add(f"{q} PSA 10", "PSA10")
+    else:
+        if include_raw:
+            if card_name and card_number and set_name:
+                _add(f"{card_name} {card_number} {set_name}", "RAW")
+            if card_name and set_name:
+                _add(f"{card_name} {set_name}", "RAW")
+            if card_name and card_number:
+                _add(f"{card_name} {card_number}", "RAW")
+            if card_name and not card_number and not set_name:
+                _add(f"{card_name} Pokemon", "RAW")
 
-    if include_psa9:
-        if card_name and card_number:
-            _add(f"{card_name} {card_number} PSA 9", "PSA9")
-        if card_name and set_name:
-            _add(f"{card_name} {set_name} PSA 9", "PSA9")
-        if card_name and not card_number:
-            _add(f"{card_name} PSA 9", "PSA9")
+        if include_psa9:
+            if card_name and card_number:
+                _add(f"{card_name} {card_number} PSA 9", "PSA9")
+            elif card_name and set_name:
+                _add(f"{card_name} {set_name} PSA 9", "PSA9")
+            elif card_name:
+                _add(f"{card_name} PSA 9", "PSA9")
 
-    if include_psa10:
-        if card_name and card_number:
-            _add(f"{card_name} {card_number} PSA 10", "PSA10")
-        if card_name and set_name:
-            _add(f"{card_name} {set_name} PSA 10", "PSA10")
-        if card_name and not card_number:
-            _add(f"{card_name} PSA 10", "PSA10")
+        if include_psa10:
+            if card_name and card_number:
+                _add(f"{card_name} {card_number} PSA 10", "PSA10")
+            elif card_name and set_name:
+                _add(f"{card_name} {set_name} PSA 10", "PSA10")
+            elif card_name:
+                _add(f"{card_name} PSA 10", "PSA10")
 
-    return queries
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    deduped: list[dict[str, str]] = []
+    for q in queries:
+        if q["query"] not in seen:
+            seen.add(q["query"])
+            deduped.append(q)
+
+    return deduped
 
 
 # ---------------------------------------------------------------------------

@@ -1624,6 +1624,9 @@ async def smart_search_post(request: Request) -> HTMLResponse | RedirectResponse
         "max_results_per_query": max_results,
     }
 
+    extra_queries_raw = (form.get("extra_queries") or "").strip()
+    extra_query_list = [q.strip() for q in extra_queries_raw.splitlines() if q.strip()]
+
     if not input_value:
         return _render(request, "smart_search.html", {
             "result": None,
@@ -1692,6 +1695,12 @@ async def smart_search_post(request: Request) -> HTMLResponse | RedirectResponse
     # --- Card / Cardmarket URL search ---
     else:
         queries = build_smart_queries(parsed, options)
+        # Append manual extra queries (RAW category, deduplicated)
+        existing_qs = {q["query"] for q in queries}
+        for eq in extra_query_list:
+            if eq not in existing_qs:
+                queries.append({"query": eq, "category": "RAW", "source": "manual"})
+                existing_qs.add(eq)
         result_data["queries_run"] = [q["query"] for q in queries]
 
         if not queries:
