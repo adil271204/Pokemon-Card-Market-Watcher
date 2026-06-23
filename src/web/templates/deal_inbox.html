@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Deal Inbox – Card Watcher{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-inbox me-2"></i>Deal Inbox</h2>
+  <div class="text-muted small">{{ total }} Listings</div>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="card text-center h-100 border-info">
+      <div class="card-body p-2">
+        <div class="h4 text-info mb-0">{{ kpis.new }}</div>
+        <div class="small text-muted">Neue</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center h-100 border-success">
+      <div class="card-body p-2">
+        <div class="h4 text-success mb-0">{{ kpis.interesting }}</div>
+        <div class="small text-muted">Interessant</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center h-100 border-primary">
+      <div class="card-body p-2">
+        <div class="h4 text-primary mb-0">{{ kpis.watching }}</div>
+        <div class="small text-muted">Beobachten</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center h-100 border-dark">
+      <div class="card-body p-2">
+        <div class="h4 text-dark mb-0">{{ kpis.purchased_30d }}</div>
+        <div class="small text-muted">Gekauft 30d</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center h-100 border-warning">
+      <div class="card-body p-2">
+        <div class="h4 text-warning mb-0">{{ kpis.auctions_24h }}</div>
+        <div class="small text-muted">Auktion 24h</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center h-100 border-secondary">
+      <div class="card-body p-2">
+        <div class="h4 text-secondary mb-0">{{ kpis.de }}</div>
+        <div class="small text-muted">🇩🇪 Deutschland</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter Presets -->
+<div class="mb-3 d-flex gap-2 flex-wrap">
+  <a href="/deal-inbox?status=new&status=interesting&status=watching" class="btn btn-sm btn-outline-primary">↻ Zurücksetzen</a>
+  <a href="/deal-inbox?status=new&period_days=1" class="btn btn-sm btn-outline-secondary">Heute neu</a>
+  <a href="/deal-inbox?status=new&period_days=3" class="btn btn-sm btn-outline-secondary">Letzte 3 Tage</a>
+  <a href="/deal-inbox?country=DE" class="btn btn-sm btn-outline-secondary">🇩🇪 Deutschland</a>
+  <a href="/deal-inbox?listing_type=AUCTION" class="btn btn-sm btn-outline-secondary">⏰ Auktionen</a>
+  <a href="/deal-inbox?listing_type=FIXED_PRICE" class="btn btn-sm btn-outline-secondary">Sofortkauf</a>
+  <a href="/deal-inbox?status=interesting" class="btn btn-sm btn-outline-success">Interessant</a>
+  <a href="/deal-inbox?status=watching" class="btn btn-sm btn-outline-primary">Beobachten</a>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+  <div class="card-header fw-semibold"><i class="bi bi-funnel me-1"></i>Filter</div>
+  <div class="card-body">
+    <form method="get" action="/deal-inbox" class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small">Titel</label>
+        <input type="text" name="title" class="form-control form-control-sm" value="{{ filters.title }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Land</label>
+        <input type="text" name="country" class="form-control form-control-sm" placeholder="DE,AT,FR" value="{{ filters.country }}">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small">Preis von</label>
+        <input type="number" name="price_min" class="form-control form-control-sm" step="0.01" value="{{ filters.price_min }}">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small">bis</label>
+        <input type="number" name="price_max" class="form-control form-control-sm" step="0.01" value="{{ filters.price_max }}">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label small">Tage</label>
+        <input type="number" name="period_days" class="form-control form-control-sm" value="{{ filters.period_days }}">
+      </div>
+      <div class="col-md-2 d-flex gap-1">
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        <a href="/deal-inbox" class="btn btn-outline-secondary btn-sm">Reset</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Listings Table -->
+{% if items %}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:46px">Bild</th>
+            <th>Status</th>
+            <th>Titel</th>
+            <th>Typ</th>
+            <th>Land</th>
+            <th>Preis</th>
+            <th>Versand</th>
+            <th>Gesamt</th>
+            <th>Gebote</th>
+            <th>Datum</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in items %}
+          {% set st = l.listing_status or 'new' %}
+          {% set lt = l.listing_type or 'UNKNOWN' %}
+          {% set status_badge_map = {
+            'new': ('secondary', 'Neu'),
+            'interesting': ('success', 'Interessant'),
+            'watching': ('primary', 'Beobachten'),
+            'ignored': ('secondary', 'Ignoriert'),
+            'purchased': ('dark', 'Gekauft'),
+            'too_expensive': ('warning', 'Zu teuer'),
+            'wrong_card': ('danger', 'Falsche Karte'),
+            'bad_condition': ('warning', 'Schlechter Zustand'),
+            'shipping_too_high': ('warning', 'Versand zu hoch'),
+            'not_relevant': ('secondary', 'Nicht relevant'),
+          } %}
+          {% set badge_color, badge_text = status_badge_map.get(st, ('secondary', st)) %}
+          <tr class="{% if lt == 'AUCTION' %}table-warning{% endif %}">
+            <td>
+              {% if l.image_url %}
+              <img src="{{ l.image_url }}" alt="" style="width:40px;height:40px;object-fit:contain">
+              {% else %}<span class="text-muted">–</span>{% endif %}
+            </td>
+            <td><span class="badge bg-{{ badge_color }}">{{ badge_text }}</span></td>
+            <td class="text-truncate" style="max-width:200px" title="{{ l.title }}">{{ l.title }}</td>
+            <td class="text-nowrap">
+              {% if lt == 'AUCTION' %}<span class="badge bg-warning text-dark">Auktion</span>
+              {% elif lt == 'FIXED_PRICE' %}<span class="badge bg-primary">Sofortkauf</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if l.location_country %}<span class="badge bg-secondary">{{ l.location_country }}</span>
+              {% else %}<span class="text-muted">–</span>{% endif %}
+            </td>
+            <td class="small text-nowrap">
+              {% if lt == 'AUCTION' and l.current_bid_price %}
+              <span class="text-warning">{{ "%.2f"|format(l.current_bid_price) }} €</span>
+              {% else %}{{ "%.2f"|format(l.price) }} €{% endif %}
+            </td>
+            <td class="small">{{ "%.2f"|format(l.shipping) if l.shipping else '–' }} €</td>
+            <td class="fw-semibold small text-nowrap">{{ "%.2f"|format(l.total_price) }} €</td>
+            <td class="small text-center">
+              {% if lt == 'AUCTION' %}{{ l.bid_count if l.bid_count is not none else '–' }}
+              {% else %}<span class="text-muted">–</span>{% endif %}
+            </td>
+            <td class="small text-muted text-nowrap">{{ l.first_seen_at.strftime('%d.%m.%Y') if l.first_seen_at else '–' }}</td>
+            <td class="text-nowrap">
+              {% if l.url %}
+              <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary py-0">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav class="mt-3">
+  <ul class="pagination pagination-sm justify-content-center">
+    {% if page > 1 %}
+    <li class="page-item"><a class="page-link" href="/deal-inbox?page={{ page - 1 }}">‹</a></li>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+      {% if p == page or (p >= page - 2 and p <= page + 2) or p == 1 or p == total_pages %}
+      <li class="page-item {% if p == page %}active{% endif %}">
+        <a class="page-link" href="/deal-inbox?page={{ p }}">{{ p }}</a>
+      </li>
+      {% elif p == page - 3 or p == page + 3 %}
+      <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <li class="page-item"><a class="page-link" href="/deal-inbox?page={{ page + 1 }}">›</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox display-4 d-block mb-3"></i>
+  <p>Keine Listings gefunden.</p>
+</div>
+{% endif %}
+
+{% endblock %}

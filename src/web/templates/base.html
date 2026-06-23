@@ -31,6 +31,11 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if request.url.path == '/deal-inbox' %}active{% endif %}" href="/deal-inbox">
+            <i class="bi bi-inbox me-1"></i>Deal Inbox
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/listings' %}active{% endif %}" href="/listings">
             <i class="bi bi-card-list me-1"></i>Listings
           </a>

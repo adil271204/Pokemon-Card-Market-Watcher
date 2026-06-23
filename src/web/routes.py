@@ -1906,6 +1906,130 @@ async def bulk_set_listing_status(request: Request) -> RedirectResponse:
     return RedirectResponse(url=return_url, status_code=303)
 
 
+@router.get("/deal-inbox", response_class=HTMLResponse, response_model=None)
+async def deal_inbox(request: Request) -> HTMLResponse:
+    """Central inbox view for managing listings by status."""
+    if redir := _guard(request):
+        return redir
+
+    params = request.query_params
+    # Filters
+    statuses_raw = params.getlist("status") or ["new", "interesting", "watching"]
+    title_search = params.get("title") or None
+    country_filter = (params.get("country") or "").strip().upper() or None
+    listing_type_filter = params.get("listing_type") or None
+    price_min = _parse_optional_float(params.get("price_min"))
+    price_max = _parse_optional_float(params.get("price_max"))
+    period_days = int(params.get("period_days") or 30)
+    watchlist_id = int(params["watchlist_id"]) if params.get("watchlist_id") else None
+    page = max(1, int(params.get("page", 1)))
+    per_page = 50
+
+    db = get_session()
+    try:
+        # Base query
+        q = db.query(SeenListing).filter(SeenListing.deleted_at.is_(None))
+
+        # Status filter
+        if statuses_raw:
+            q = q.filter(
+                SeenListing.listing_status.in_(statuses_raw)
+                if any(s for s in statuses_raw)
+                else SeenListing.listing_status.in_(["new"])
+            )
+
+        # Title
+        if title_search:
+            q = q.filter(SeenListing.title.ilike(f"%{title_search}%"))
+
+        # Country
+        if country_filter:
+            q = q.filter(SeenListing.location_country == country_filter)
+
+        # Listing type
+        if listing_type_filter and listing_type_filter in ("FIXED_PRICE", "AUCTION"):
+            q = q.filter(SeenListing.listing_type == listing_type_filter)
+
+        # Price
+        if price_min is not None:
+            q = q.filter(SeenListing.total_price >= price_min)
+        if price_max is not None:
+            q = q.filter(SeenListing.total_price <= price_max)
+
+        # Period
+        if period_days:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
+            q = q.filter(SeenListing.first_seen_at >= cutoff)
+
+        # Watchlist
+        if watchlist_id:
+            q = q.filter(SeenListing.watchlist_id == watchlist_id)
+
+        total = q.count()
+        items = q.order_by(SeenListing.first_seen_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+        # KPIs
+        now = datetime.now(timezone.utc)
+        cutoff_24h = now - timedelta(hours=24)
+        cutoff_30d = now - timedelta(days=30)
+        kpis = {
+            "new": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.listing_status == "new",
+                SeenListing.deleted_at.is_(None),
+            ).scalar(),
+            "interesting": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.listing_status == "interesting",
+                SeenListing.deleted_at.is_(None),
+            ).scalar(),
+            "watching": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.listing_status == "watching",
+                SeenListing.deleted_at.is_(None),
+            ).scalar(),
+            "purchased_30d": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.purchased_at >= cutoff_30d,
+            ).scalar(),
+            "ignored": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.listing_status == "ignored",
+                SeenListing.deleted_at.is_(None),
+            ).scalar(),
+            "auctions_24h": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.listing_type == "AUCTION",
+                SeenListing.item_end_date <= now + timedelta(hours=24),
+                SeenListing.item_end_date >= now,
+                SeenListing.deleted_at.is_(None),
+            ).scalar(),
+            "de": db.query(func.count(SeenListing.id)).filter(
+                SeenListing.location_country == "DE",
+                SeenListing.deleted_at.is_(None),
+            ).scalar(),
+        }
+
+        watchlists_all = services.get_all_watchlists(db)
+        total_pages = max(1, (total + per_page - 1) // per_page)
+
+    finally:
+        db.close()
+
+    return _render(request, "deal_inbox.html", {
+        "items": items,
+        "total": total,
+        "page": page,
+        "total_pages": total_pages,
+        "kpis": kpis,
+        "watchlists": watchlists_all,
+        "filters": {
+            "title": title_search or "",
+            "status": statuses_raw,
+            "country": country_filter or "",
+            "listing_type": listing_type_filter or "",
+            "price_min": price_min or "",
+            "price_max": price_max or "",
+            "period_days": period_days,
+            "watchlist_id": watchlist_id or "",
+        },
+    })
+
+
 @router.post("/listings/{listing_id}/note", response_model=None)
 async def set_listing_note(request: Request, listing_id: int) -> RedirectResponse:
     """Update a listing's note."""
