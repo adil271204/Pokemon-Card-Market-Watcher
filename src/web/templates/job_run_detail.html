@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}JobRun #{{ run.id }} – Card Watcher{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-file-earmark-text me-2"></i>JobRun #{{ run.id }}
+    <span class="badge bg-{{ 'success' if run.status == 'success' else ('warning text-dark' if run.status == 'partial_success' else ('primary' if run.status == 'running' else 'danger')) }} ms-2">
+      {{ run.status }}
+    </span>
+  </h2>
+  <a href="/system-status" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Zurück
+  </a>
+</div>
+
+<!-- Hints -->
+{% for hint in hints %}
+<div class="alert alert-warning d-flex align-items-center gap-2">
+  <i class="bi bi-lightbulb-fill"></i>{{ hint }}
+</div>
+{% endfor %}
+
+<!-- Main Info -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">Basis-Informationen</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tr><th style="width:45%">ID</th><td>{{ run.id }}</td></tr>
+          <tr><th>Job-Typ</th><td><span class="badge bg-secondary">{{ run.job_type }}</span></td></tr>
+          <tr><th>Status</th><td>
+            <span class="badge bg-{{ 'success' if run.status == 'success' else ('warning text-dark' if run.status == 'partial_success' else ('primary' if run.status == 'running' else 'danger')) }}">
+              {{ run.status }}
+            </span>
+          </td></tr>
+          <tr><th>Gestartet</th><td>{{ run.started_at.strftime('%d.%m.%Y %H:%M:%S') if run.started_at else '–' }}</td></tr>
+          <tr><th>Beendet</th><td>{{ run.finished_at.strftime('%d.%m.%Y %H:%M:%S') if run.finished_at else '–' }}</td></tr>
+          <tr><th>Dauer</th><td>{{ "%.2f"|format(run.duration_seconds) if run.duration_seconds else '–' }} Sekunden</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">Statistiken</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tr><th style="width:60%">Watchlists geprüft</th><td>{{ run.watchlists_checked }}</td></tr>
+          <tr><th>Queries ausgeführt</th><td>{{ run.queries_executed }}</td></tr>
+          <tr><th>API-Ergebnisse</th><td>{{ run.api_results_count }}</td></tr>
+          <tr><th>Listings gespeichert</th><td>{{ run.listings_saved }}</td></tr>
+          <tr><th>Listings aktualisiert</th><td>{{ run.listings_updated }}</td></tr>
+          <tr><th>Bereits bekannt (skip)</th><td>{{ run.listings_skipped_existing }}</td></tr>
+          <tr><th>Gefiltert: Land</th><td>{{ run.listings_filtered_country }}</td></tr>
+          <tr><th>Gefiltert: Keywords</th><td>{{ run.listings_filtered_keywords }}</td></tr>
+          <tr><th>Gefiltert: Preis</th><td>{{ run.listings_filtered_price }}</td></tr>
+          <tr><th>Gefiltert: Gelöscht</th><td>{{ run.listings_filtered_deleted }}</td></tr>
+          <tr><th>Alerts gesendet</th><td>{{ run.alerts_sent }}</td></tr>
+          <tr><th>Fehler gesamt</th>
+            <td class="{{ 'text-danger fw-bold' if run.errors_count else '' }}">{{ run.errors_count }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Error Message -->
+{% if run.error_message %}
+<div class="card mb-4 border-danger">
+  <div class="card-header fw-semibold text-danger"><i class="bi bi-x-circle me-1"></i>Fehlermeldung</div>
+  <div class="card-body">
+    <pre class="mb-0 small text-danger" style="white-space:pre-wrap;word-break:break-all;">{{ run.error_message }}</pre>
+  </div>
+</div>
+{% endif %}
+
+<!-- Metadata -->
+{% if metadata_pretty %}
+<div class="card mb-4">
+  <div class="card-header fw-semibold"><i class="bi bi-braces me-1"></i>Metadata</div>
+  <div class="card-body">
+    <pre class="mb-0 small" style="white-space:pre-wrap;">{{ metadata_pretty }}</pre>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

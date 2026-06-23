@@ -73,6 +73,11 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if '/system-status' in request.url.path %}active{% endif %}" href="/system-status">
+            <i class="bi bi-activity me-1"></i>Systemstatus
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.url.path == '/settings' %}active{% endif %}" href="/settings">
             <i class="bi bi-gear me-1"></i>Einstellungen
           </a>

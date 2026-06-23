@@ -50,6 +50,9 @@ EBAY_ALLOW_UNKNOWN_LOCATION: bool = os.getenv(
 # Telegram
 TELEGRAM_BOT_TOKEN: str | None = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID: str | None = os.getenv("TELEGRAM_CHAT_ID")
+ENABLE_TELEGRAM_ALERTS: bool = os.getenv("ENABLE_TELEGRAM_ALERTS", "true").lower() in ("true", "1", "yes")
+TELEGRAM_ALERT_MIN_SCORE: float = float(os.getenv("TELEGRAM_ALERT_MIN_SCORE", "70"))
+TELEGRAM_ALERT_INCLUDE_AUCTIONS: bool = os.getenv("TELEGRAM_ALERT_INCLUDE_AUCTIONS", "false").lower() in ("true", "1", "yes")
 
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 

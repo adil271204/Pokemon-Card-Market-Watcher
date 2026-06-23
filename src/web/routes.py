@@ -22,11 +22,12 @@ from src.location_filter import is_allowed_location
 import csv
 import io
 
-from src.models import PokemonCard, PokemonSet, SeenListing, SetScan, SetScanResult, Watchlist
+from src.models import Alert, JobRun, PokemonCard, PokemonSet, SeenListing, SetScan, SetScanResult, Watchlist
 from src.cardlist_importer import fetch_cardlist_url, parse_cardlist_html
 from src.set_scanner import build_card_queries, calculate_card_opportunity, run_set_scan
 from src.smart_search import build_free_set_queries, build_smart_queries, detect_smart_search_input, run_smart_search, search_set_cards
 from src.web import auth, services
+from src import job_runs as jr
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +367,15 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
 
     results: list[dict[str, Any]] = []
     excluded_location: list[dict[str, Any]] = []
+    test_job_id: int | None = None
     try:
+        _test_db = get_session()
+        try:
+            test_job_id = jr.start_job_run(_test_db, "watchlist_test", metadata={"watchlist_id": watchlist_id, "watchlist_name": wl_data["name"]})
+            _test_db.commit()
+        finally:
+            _test_db.close()
+
         client = EbayClient()
         raw_listings = client.search_new_listings(
             query=wl_data["query"],
@@ -417,8 +426,27 @@ async def watchlist_test(request: Request, watchlist_id: int) -> HTMLResponse | 
             })
     except Exception as exc:
         logger.error("Test run failed for watchlist %d: %s", watchlist_id, exc)
+        if test_job_id is not None:
+            _err_db = get_session()
+            try:
+                jr.record_job_error(_err_db, test_job_id, exc)
+                _err_db.commit()
+            finally:
+                _err_db.close()
         auth.set_flash(request, f"Test fehlgeschlagen: {exc}", "danger")
         return RedirectResponse(url="/watchlists", status_code=303)
+
+    if test_job_id is not None:
+        _fin_db = get_session()
+        try:
+            jr.finish_job_run(_fin_db, test_job_id, "success", stats={
+                "queries_executed": 1,
+                "api_results_count": len(results) + len(excluded_location),
+                "listings_filtered_country": len(excluded_location),
+            })
+            _fin_db.commit()
+        finally:
+            _fin_db.close()
 
     return _render(request, "test_results.html", {
         "wl_name": wl_data["name"],
@@ -1077,6 +1105,9 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
         # Telegram
         "TELEGRAM_BOT_TOKEN": "✓ gesetzt" if config.TELEGRAM_BOT_TOKEN else "✗ fehlt",
         "TELEGRAM_CHAT_ID": "✓ gesetzt" if config.TELEGRAM_CHAT_ID else "✗ fehlt",
+        "ENABLE_TELEGRAM_ALERTS": str(config.ENABLE_TELEGRAM_ALERTS),
+        "TELEGRAM_ALERT_MIN_SCORE": str(config.TELEGRAM_ALERT_MIN_SCORE),
+        "TELEGRAM_ALERT_INCLUDE_AUCTIONS": str(config.TELEGRAM_ALERT_INCLUDE_AUCTIONS),
         # Auth
         "DASHBOARD_PASSWORD": "✓ gesetzt" if config.DASHBOARD_PASSWORD else "✗ fehlt",
         "SESSION_SECRET": "✓ gesetzt" if config.SESSION_SECRET_IS_SET else "⚠ Nur Fallback – nicht sicher für Production!",
@@ -1099,13 +1130,51 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
             "GB/UK ist nicht in EBAY_EXCLUDED_COUNTRIES – UK-Listings werden nicht gefiltert. "
             "Empfehlung: GB hinzufügen, um Einfuhrabgaben-Probleme zu vermeiden."
         )
+    if config.ENABLE_TELEGRAM_ALERTS and not (config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID):
+        warnings.append(
+            "ENABLE_TELEGRAM_ALERTS=true, aber TELEGRAM_BOT_TOKEN oder TELEGRAM_CHAT_ID fehlen – "
+            "Telegram-Alerts werden nicht gesendet!"
+        )
 
     return _render(request, "settings.html", {
         "cfg": cfg,
         "warnings": warnings,
         "use_mock_ebay": config.USE_MOCK_EBAY,
         "ebay_keys_set": config.EBAY_KEYS_SET,
+        "telegram_configured": bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID),
+        "telegram_alerts_enabled": config.ENABLE_TELEGRAM_ALERTS,
     })
+
+
+@router.post("/settings/test-telegram", response_model=None)
+async def test_telegram(request: Request) -> RedirectResponse:
+    """Send a test Telegram message to verify the bot connection."""
+    if redir := _guard(request):
+        return redir
+
+    from src.telegram_notifier import send_telegram_message
+
+    if not config.ENABLE_TELEGRAM_ALERTS:
+        auth.set_flash(request, "ENABLE_TELEGRAM_ALERTS ist deaktiviert.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
+
+    if not (config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID):
+        auth.set_flash(
+            request,
+            "TELEGRAM_BOT_TOKEN oder TELEGRAM_CHAT_ID fehlen – Telegram nicht konfiguriert.",
+            "danger",
+        )
+        return RedirectResponse(url="/settings", status_code=303)
+
+    ok = send_telegram_message(
+        "✅ <b>Telegram-Test erfolgreich.</b>\nPokemon Card Market Watcher ist verbunden."
+    )
+    if ok:
+        auth.set_flash(request, "Telegram-Testnachricht erfolgreich gesendet.", "success")
+    else:
+        auth.set_flash(request, "Telegram-Test fehlgeschlagen – bitte Logs prüfen.", "danger")
+
+    return RedirectResponse(url="/settings", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -1470,8 +1539,16 @@ async def set_scan(request: Request, set_id: int) -> HTMLResponse | RedirectResp
             auth.set_flash(request, "Set nicht gefunden.", "danger")
             return RedirectResponse(url="/sets", status_code=303)
 
+        job_run_id = jr.start_job_run(db, "set_scan", metadata={"set_id": set_id, "set_name": pset.name})
+        db.commit()
         try:
             scan = run_set_scan(db, pset)
+            jr.finish_job_run(db, job_run_id, "success", stats={
+                "queries_executed": scan.cards_scanned,
+                "api_results_count": scan.listings_found,
+                "listings_saved": scan.listings_saved,
+            })
+            db.commit()
             auth.set_flash(
                 request,
                 f"Scan abgeschlossen: {scan.cards_scanned} Karten, {scan.listings_found} Listings gefunden, {scan.listings_saved} nach Filter.",
@@ -1479,6 +1556,8 @@ async def set_scan(request: Request, set_id: int) -> HTMLResponse | RedirectResp
             )
         except Exception as exc:
             logger.error("Set scan failed: %s", exc, exc_info=True)
+            jr.record_job_error(db, job_run_id, exc)
+            db.commit()
             auth.set_flash(request, f"Scan-Fehler: {exc}", "danger")
 
     return RedirectResponse(url=f"/sets/{set_id}/scan-results", status_code=303)
@@ -2051,3 +2130,169 @@ async def set_listing_note(request: Request, listing_id: int) -> RedirectRespons
             auth.set_flash(request, "Listing nicht gefunden oder gelöscht.", "warning")
 
     return RedirectResponse(url=return_url, status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# System Status
+# ---------------------------------------------------------------------------
+
+@router.get("/system-status", response_class=HTMLResponse, response_model=None)
+async def system_status(request: Request) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    from datetime import timedelta
+
+    with get_session() as db:
+        # --- DB connectivity ---
+        try:
+            db.execute(__import__("sqlalchemy").text("SELECT 1"))
+            db_ok = True
+        except Exception:
+            db_ok = False
+
+        # --- Last watcher runs ---
+        last_watcher = jr.get_last_job_run(db, "watcher")
+        last_watcher_ok = jr.get_last_successful_job_run(db, "watcher")
+
+        now = datetime.now(timezone.utc)
+        watcher_stale = False
+        watcher_stale_minutes = 0
+        if last_watcher:
+            age = now - last_watcher.started_at.replace(tzinfo=timezone.utc)
+            watcher_stale_minutes = int(age.total_seconds() / 60)
+            watcher_stale = age > timedelta(minutes=60)
+        elif True:  # no watcher run at all
+            watcher_stale = True
+
+        # --- Recent job runs ---
+        recent_runs = jr.get_recent_job_runs(db, limit=50)
+
+        # --- KPIs ---
+        cutoff_24h = now - timedelta(hours=24)
+        new_listings_24h = (
+            db.query(SeenListing)
+            .filter(SeenListing.deleted_at.is_(None), SeenListing.first_seen_at >= cutoff_24h)
+            .count()
+        )
+        alerts_24h = db.query(Alert).filter(Alert.sent_at >= cutoff_24h).count()
+        active_watchlists = db.query(Watchlist).filter_by(enabled=True).count()
+        errors_24h = (
+            db.query(JobRun)
+            .filter(JobRun.started_at >= cutoff_24h, JobRun.status == "failed")
+            .count()
+        )
+
+    # --- Config checks ---
+    ebay_config = "ok"
+    if config.USE_MOCK_EBAY:
+        ebay_config = "mock"
+    elif not config.EBAY_KEYS_SET:
+        ebay_config = "missing_keys"
+
+    telegram_ok = bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
+
+    warnings: list[str] = []
+    if watcher_stale:
+        warnings.append(
+            f"Watcher lief seit über {watcher_stale_minutes} Minuten nicht mehr." if watcher_stale_minutes else
+            "Kein Watcher-Lauf gefunden."
+        )
+    if config.USE_MOCK_EBAY:
+        warnings.append("Mock-Modus aktiv – keine echten eBay-Daten werden abgerufen.")
+    if not config.USE_MOCK_EBAY and not config.EBAY_KEYS_SET:
+        warnings.append("eBay API Keys fehlen – der Watcher wird abstürzen!")
+    if errors_24h > 0:
+        warnings.append(f"{errors_24h} fehlgeschlagene Job-Runs in den letzten 24h.")
+
+    return _render(request, "system_status.html", {
+        "db_ok": db_ok,
+        "ebay_config": ebay_config,
+        "use_mock_ebay": config.USE_MOCK_EBAY,
+        "ebay_keys_set": config.EBAY_KEYS_SET,
+        "telegram_ok": telegram_ok,
+        "telegram_alerts_enabled": config.ENABLE_TELEGRAM_ALERTS,
+        "last_watcher": last_watcher,
+        "last_watcher_ok": last_watcher_ok,
+        "watcher_stale": watcher_stale,
+        "watcher_stale_minutes": watcher_stale_minutes,
+        "recent_runs": recent_runs,
+        "new_listings_24h": new_listings_24h,
+        "alerts_24h": alerts_24h,
+        "active_watchlists": active_watchlists,
+        "errors_24h": errors_24h,
+        "warnings": warnings,
+    })
+
+
+@router.get("/system-status/jobs/{job_run_id}", response_class=HTMLResponse, response_model=None)
+async def job_run_detail(request: Request, job_run_id: int) -> HTMLResponse | RedirectResponse:
+    if redir := _guard(request):
+        return redir
+
+    import json as _json
+
+    with get_session() as db:
+        run = db.get(JobRun, job_run_id)
+        if not run:
+            auth.set_flash(request, "JobRun nicht gefunden.", "danger")
+            return RedirectResponse(url="/system-status", status_code=303)
+
+        hints: list[str] = []
+        if run.api_results_count == 0 and (run.queries_executed or 0) > 0:
+            hints.append("eBay API hat keine Ergebnisse geliefert oder Filter/Query sind zu eng.")
+        if (run.listings_filtered_country or 0) > 10:
+            hints.append("Viele Listings wurden wegen Länderfilter ausgeschlossen.")
+        if (run.listings_skipped_existing or 0) > 50:
+            hints.append("Viele Listings waren bereits bekannt – der Watcher läuft normal.")
+        if (run.errors_count or 0) > 0:
+            hints.append("Bitte Fehlerdetails unten prüfen.")
+
+        metadata_pretty = None
+        if run.metadata_json:
+            try:
+                metadata_pretty = _json.dumps(_json.loads(run.metadata_json), indent=2, ensure_ascii=False)
+            except Exception:
+                metadata_pretty = run.metadata_json
+
+        return _render(request, "job_run_detail.html", {
+            "run": run,
+            "hints": hints,
+            "metadata_pretty": metadata_pretty,
+        })
+
+
+@router.get("/healthz/full")
+async def healthz_full(request: Request):
+    from fastapi.responses import JSONResponse
+
+    db_status = "ok"
+    try:
+        with get_session() as db:
+            db.execute(__import__("sqlalchemy").text("SELECT 1"))
+    except Exception:
+        db_status = "error"
+
+    last_watcher_status = None
+    try:
+        with get_session() as db:
+            run = jr.get_last_job_run(db, "watcher")
+            if run:
+                last_watcher_status = run.status
+    except Exception:
+        pass
+
+    ebay_config = "ok"
+    if config.USE_MOCK_EBAY:
+        ebay_config = "mock"
+    elif not config.EBAY_KEYS_SET:
+        ebay_config = "missing_keys"
+
+    telegram_config = "ok" if (config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID) else "missing"
+
+    return JSONResponse({
+        "database": db_status,
+        "ebay_config": ebay_config,
+        "telegram_config": telegram_config,
+        "last_watcher_status": last_watcher_status,
+    })

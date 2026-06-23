@@ -3,7 +3,7 @@ services:
     name: pokemon-card-market-web
     runtime: python
     plan: starter
-    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/migrate_recent_listing_fields.py && python scripts/migrate_seenlisting_deleted_at.py && python scripts/migrate_listing_location_fields.py && python scripts/migrate_set_scanner.py && python scripts/migrate_cardlist_import_fields.py && python scripts/add_watchlist.py && python scripts/migrate_listing_type_fields.py && python scripts/migrate_listing_status_fields.py
+    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/migrate_recent_listing_fields.py && python scripts/migrate_seenlisting_deleted_at.py && python scripts/migrate_listing_location_fields.py && python scripts/migrate_set_scanner.py && python scripts/migrate_cardlist_import_fields.py && python scripts/add_watchlist.py && python scripts/migrate_listing_type_fields.py && python scripts/migrate_listing_status_fields.py && python scripts/migrate_job_runs.py && python scripts/migrate_telegram_alert_fields.py
     startCommand: uvicorn dashboard_app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
@@ -37,7 +37,7 @@ services:
     runtime: python
     plan: starter
     schedule: "*/10 * * * *"
-    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/migrate_recent_listing_fields.py && python scripts/migrate_seenlisting_deleted_at.py && python scripts/migrate_listing_location_fields.py && python scripts/migrate_set_scanner.py && python scripts/migrate_cardlist_import_fields.py && python scripts/add_watchlist.py && python scripts/migrate_listing_type_fields.py && python scripts/migrate_listing_status_fields.py
+    buildCommand: pip install -r requirements.txt && python scripts/init_db.py && python scripts/migrate_recent_listing_fields.py && python scripts/migrate_seenlisting_deleted_at.py && python scripts/migrate_listing_location_fields.py && python scripts/migrate_set_scanner.py && python scripts/migrate_cardlist_import_fields.py && python scripts/add_watchlist.py && python scripts/migrate_listing_type_fields.py && python scripts/migrate_listing_status_fields.py && python scripts/migrate_job_runs.py && python scripts/migrate_telegram_alert_fields.py
     startCommand: python main.py --once
     envVars:
       - key: DATABASE_URL

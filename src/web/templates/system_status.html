@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Systemstatus – Card Watcher{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0"><i class="bi bi-activity me-2"></i>Systemstatus</h2>
+  <div class="text-muted small">{{ recent_runs|length }} Job-Runs geladen</div>
+</div>
+
+<!-- Warnings -->
+{% for w in warnings %}
+<div class="alert alert-warning d-flex align-items-center gap-2">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  {{ w }}
+</div>
+{% endfor %}
+
+<!-- Status Cards -->
+<div class="row g-3 mb-4">
+
+  <!-- DB -->
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card text-center h-100 border-{{ 'success' if db_ok else 'danger' }}">
+      <div class="card-body p-2">
+        <i class="bi bi-database fs-4 text-{{ 'success' if db_ok else 'danger' }}"></i>
+        <div class="small fw-semibold mt-1">Datenbank</div>
+        <div class="small text-{{ 'success' if db_ok else 'danger' }}">{{ 'OK' if db_ok else 'Fehler' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- eBay API -->
+  <div class="col-6 col-md-3 col-lg-2">
+    {% set ebay_color = 'success' if ebay_config == 'ok' else ('warning' if ebay_config == 'mock' else 'danger') %}
+    {% set ebay_label = 'Aktiv' if ebay_config == 'ok' else ('Mock' if ebay_config == 'mock' else 'Keys fehlen') %}
+    <div class="card text-center h-100 border-{{ ebay_color }}">
+      <div class="card-body p-2">
+        <i class="bi bi-shop fs-4 text-{{ ebay_color }}"></i>
+        <div class="small fw-semibold mt-1">eBay API</div>
+        <div class="small text-{{ ebay_color }}">{{ ebay_label }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram -->
+  <div class="col-6 col-md-3 col-lg-2">
+    {% set tg_color = 'success' if telegram_ok and telegram_alerts_enabled else ('warning' if telegram_ok else 'secondary') %}
+    {% set tg_label = 'Alerts aktiv' if telegram_ok and telegram_alerts_enabled else ('Konfiguriert' if telegram_ok else 'Nicht konfiguriert') %}
+    <div class="card text-center h-100 border-{{ tg_color }}">
+      <div class="card-body p-2">
+        <i class="bi bi-telegram fs-4 text-{{ tg_color }}"></i>
+        <div class="small fw-semibold mt-1">Telegram</div>
+        <div class="small text-{{ tg_color }}">{{ tg_label }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Watcher Status -->
+  <div class="col-6 col-md-3 col-lg-2">
+    {% if last_watcher %}
+      {% set wcolor = 'success' if last_watcher.status == 'success' else ('warning' if last_watcher.status == 'partial_success' else 'danger') %}
+    {% else %}
+      {% set wcolor = 'secondary' %}
+    {% endif %}
+    <div class="card text-center h-100 border-{{ wcolor }}">
+      <div class="card-body p-2">
+        <i class="bi bi-eye fs-4 text-{{ wcolor }}"></i>
+        <div class="small fw-semibold mt-1">Watcher</div>
+        <div class="small text-{{ wcolor }}">
+          {% if last_watcher %}{{ last_watcher.status }}{% else %}Kein Lauf{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Watchlists -->
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card text-center h-100">
+      <div class="card-body p-2">
+        <div class="h5 mb-0">{{ active_watchlists }}</div>
+        <div class="small text-muted mt-1">Aktive Watchlists</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Listings 24h -->
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card text-center h-100">
+      <div class="card-body p-2">
+        <div class="h5 mb-0">{{ new_listings_24h }}</div>
+        <div class="small text-muted mt-1">Neue Listings 24h</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts 24h -->
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card text-center h-100">
+      <div class="card-body p-2">
+        <div class="h5 mb-0">{{ alerts_24h }}</div>
+        <div class="small text-muted mt-1">Alerts 24h</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Errors 24h -->
+  <div class="col-6 col-md-3 col-lg-2">
+    <div class="card text-center h-100 border-{{ 'danger' if errors_24h > 0 else 'success' }}">
+      <div class="card-body p-2">
+        <div class="h5 mb-0 text-{{ 'danger' if errors_24h > 0 else 'success' }}">{{ errors_24h }}</div>
+        <div class="small text-muted mt-1">Fehler 24h</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Watcher Detail -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-clock-history me-1"></i>Letzter Watcher-Lauf</div>
+      <div class="card-body small">
+        {% if last_watcher %}
+        <table class="table table-sm mb-0">
+          <tr><th>Zeitpunkt</th><td>{{ last_watcher.started_at.strftime('%d.%m.%Y %H:%M') if last_watcher.started_at else '–' }}</td></tr>
+          <tr><th>Status</th><td>
+            {% set s = last_watcher.status %}
+            <span class="badge bg-{{ 'success' if s == 'success' else ('warning text-dark' if s == 'partial_success' else ('primary' if s == 'running' else 'danger')) }}">{{ s }}</span>
+          </td></tr>
+          <tr><th>Dauer</th><td>{{ "%.1f"|format(last_watcher.duration_seconds) if last_watcher.duration_seconds else '–' }} s</td></tr>
+          <tr><th>Watchlists</th><td>{{ last_watcher.watchlists_checked }}</td></tr>
+          <tr><th>API-Ergebnisse</th><td>{{ last_watcher.api_results_count }}</td></tr>
+          <tr><th>Gespeichert</th><td>{{ last_watcher.listings_saved }}</td></tr>
+          <tr><th>Bekannt</th><td>{{ last_watcher.listings_skipped_existing }}</td></tr>
+          <tr><th>Gefiltert Land</th><td>{{ last_watcher.listings_filtered_country }}</td></tr>
+          <tr><th>Alerts</th><td>{{ last_watcher.alerts_sent }}</td></tr>
+          <tr><th>Fehler</th><td>{{ last_watcher.errors_count }}</td></tr>
+        </table>
+        <a href="/system-status/jobs/{{ last_watcher.id }}" class="btn btn-sm btn-outline-secondary mt-2">Details</a>
+        {% else %}
+        <div class="text-muted">Noch kein Watcher-Lauf aufgezeichnet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-check-circle me-1"></i>Letzter erfolgreicher Lauf</div>
+      <div class="card-body small">
+        {% if last_watcher_ok %}
+        <table class="table table-sm mb-0">
+          <tr><th>Zeitpunkt</th><td>{{ last_watcher_ok.started_at.strftime('%d.%m.%Y %H:%M') if last_watcher_ok.started_at else '–' }}</td></tr>
+          <tr><th>Status</th><td><span class="badge bg-success">{{ last_watcher_ok.status }}</span></td></tr>
+          <tr><th>Dauer</th><td>{{ "%.1f"|format(last_watcher_ok.duration_seconds) if last_watcher_ok.duration_seconds else '–' }} s</td></tr>
+          <tr><th>Gespeichert</th><td>{{ last_watcher_ok.listings_saved }}</td></tr>
+          <tr><th>Alerts</th><td>{{ last_watcher_ok.alerts_sent }}</td></tr>
+        </table>
+        <a href="/system-status/jobs/{{ last_watcher_ok.id }}" class="btn btn-sm btn-outline-secondary mt-2">Details</a>
+        {% else %}
+        <div class="text-muted">Kein erfolgreicher Watcher-Lauf gefunden.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Job Run Table -->
+{% if recent_runs %}
+<div class="card">
+  <div class="card-header fw-semibold"><i class="bi bi-list-ul me-1"></i>Letzte Job-Runs ({{ recent_runs|length }})</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 small">
+        <thead class="table-dark">
+          <tr>
+            <th>Zeitpunkt</th>
+            <th>Typ</th>
+            <th>Status</th>
+            <th>Dauer</th>
+            <th title="Watchlists">WL</th>
+            <th title="Queries">Q</th>
+            <th title="API-Ergebnisse">API</th>
+            <th title="Gespeichert">Gessp.</th>
+            <th title="Bekannt">Bek.</th>
+            <th title="Land-Filter">Land</th>
+            <th title="Alerts">Alert</th>
+            <th title="Fehler">Err</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in recent_runs %}
+          {% set s = run.status %}
+          <tr class="{% if s == 'failed' %}table-danger{% elif s == 'partial_success' %}table-warning{% elif s == 'running' %}table-info{% endif %}">
+            <td class="text-nowrap">{{ run.started_at.strftime('%d.%m %H:%M') if run.started_at else '–' }}</td>
+            <td><span class="badge bg-secondary">{{ run.job_type }}</span></td>
+            <td>
+              <span class="badge bg-{{ 'success' if s == 'success' else ('warning text-dark' if s == 'partial_success' else ('primary' if s == 'running' else 'danger')) }}">
+                {{ s }}
+              </span>
+            </td>
+            <td class="text-nowrap">{{ "%.1f"|format(run.duration_seconds) if run.duration_seconds else '–' }}s</td>
+            <td class="text-center">{{ run.watchlists_checked or '–' }}</td>
+            <td class="text-center">{{ run.queries_executed or '–' }}</td>
+            <td class="text-center">{{ run.api_results_count or '–' }}</td>
+            <td class="text-center">{{ run.listings_saved or '–' }}</td>
+            <td class="text-center">{{ run.listings_skipped_existing or '–' }}</td>
+            <td class="text-center">{{ run.listings_filtered_country or '–' }}</td>
+            <td class="text-center">{{ run.alerts_sent or '–' }}</td>
+            <td class="text-center {% if run.errors_count %}text-danger fw-bold{% endif %}">{{ run.errors_count or '–' }}</td>
+            <td>
+              <a href="/system-status/jobs/{{ run.id }}" class="btn btn-sm btn-outline-secondary py-0">
+                <i class="bi bi-zoom-in"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-hourglass display-4 d-block mb-3"></i>
+  <p>Noch keine Job-Runs aufgezeichnet. Der Watcher muss mindestens einmal gelaufen sein.</p>
+</div>
+{% endif %}
+
+{% endblock %}

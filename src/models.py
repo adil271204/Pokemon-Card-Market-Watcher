@@ -200,6 +200,38 @@ class SetScanResult(Base):
         return f"<SetScanResult id={self.id} card_id={self.pokemon_card_id} rating={self.rating!r}>"
 
 
+class JobRun(Base):
+    """Records one execution of a background job (watcher, backfill, set_scan, …)."""
+
+    __tablename__ = "job_runs"
+
+    id = Column(Integer, primary_key=True)
+    job_type = Column(String(50), nullable=False)          # watcher | backfill | set_scan | smart_search | manual_test
+    status = Column(String(20), nullable=False, default="running")  # running | success | partial_success | failed
+    started_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+    watchlists_checked = Column(Integer, nullable=False, default=0)
+    queries_executed = Column(Integer, nullable=False, default=0)
+    api_results_count = Column(Integer, nullable=False, default=0)
+    listings_saved = Column(Integer, nullable=False, default=0)
+    listings_updated = Column(Integer, nullable=False, default=0)
+    listings_skipped_existing = Column(Integer, nullable=False, default=0)
+    listings_filtered_country = Column(Integer, nullable=False, default=0)
+    listings_filtered_keywords = Column(Integer, nullable=False, default=0)
+    listings_filtered_price = Column(Integer, nullable=False, default=0)
+    listings_filtered_deleted = Column(Integer, nullable=False, default=0)
+    alerts_sent = Column(Integer, nullable=False, default=0)
+    errors_count = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+    def __repr__(self) -> str:
+        return f"<JobRun id={self.id} job_type={self.job_type!r} status={self.status!r}>"
+
+
 class Alert(Base):
     """A deal alert that was (or should have been) sent via Telegram."""
 
@@ -215,6 +247,9 @@ class Alert(Base):
     score = Column(Float, nullable=True)
     url = Column(Text, nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    # Telegram delivery status (added in migrate_telegram_alert_fields.py)
+    telegram_sent = Column(Boolean, nullable=True, default=None)
+    telegram_error = Column(Text, nullable=True)
 
     watchlist = relationship("Watchlist", back_populates="alerts")
 

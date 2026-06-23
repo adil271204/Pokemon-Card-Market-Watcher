@@ -38,6 +38,35 @@
   </div>
 </div>
 
+<!-- Telegram Status Card -->
+{% set tg_ok = telegram_configured and telegram_alerts_enabled %}
+{% set tg_warn = telegram_alerts_enabled and not telegram_configured %}
+<div class="card mb-4 {% if tg_ok %}border-success{% elif tg_warn %}border-danger{% else %}border-secondary{% endif %}">
+  <div class="card-header fw-semibold {% if tg_ok %}text-success{% elif tg_warn %}text-danger{% else %}text-muted{% endif %}">
+    <i class="bi bi-telegram me-1"></i>Telegram Alerts
+  </div>
+  <div class="card-body">
+    {% if tg_ok %}
+      <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Aktiv &amp; konfiguriert</span>
+      <p class="mt-2 mb-2 small text-muted">Bot Token und Chat ID gesetzt. Alerts ab Score {{ cfg.TELEGRAM_ALERT_MIN_SCORE }}. Auktionen: {{ 'ja' if cfg.TELEGRAM_ALERT_INCLUDE_AUCTIONS == 'True' else 'nein' }}.</p>
+    {% elif tg_warn %}
+      <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i>Konfigurationsfehler</span>
+      <p class="mt-2 mb-2 small text-danger">ENABLE_TELEGRAM_ALERTS=true, aber Token oder Chat ID fehlen!</p>
+    {% elif not telegram_alerts_enabled %}
+      <span class="badge bg-secondary fs-6"><i class="bi bi-bell-slash me-1"></i>Deaktiviert</span>
+      <p class="mt-2 mb-2 small text-muted">Setze <code>ENABLE_TELEGRAM_ALERTS=true</code> um Alerts zu aktivieren.</p>
+    {% else %}
+      <span class="badge bg-secondary fs-6">Nicht konfiguriert</span>
+      <p class="mt-2 mb-2 small text-muted">TELEGRAM_BOT_TOKEN und TELEGRAM_CHAT_ID setzen.</p>
+    {% endif %}
+    <form method="post" action="/settings/test-telegram" class="d-inline">
+      <button type="submit" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-send me-1"></i>Telegram testen
+      </button>
+    </form>
+  </div>
+</div>
+
 <div class="card mb-4 {% if not use_mock_ebay and not ebay_keys_set %}border-danger{% elif use_mock_ebay %}border-warning{% else %}border-success{% endif %}">
   <div class="card-header fw-semibold {% if not use_mock_ebay and not ebay_keys_set %}text-danger{% elif use_mock_ebay %}text-warning{% else %}text-success{% endif %}">
     <i class="bi bi-shop me-1"></i>eBay API Status
@@ -62,6 +91,19 @@
     <p class="mb-1"><strong>Erlaubte Länder (EU):</strong> werden automatisch aus <code>EBAY_ALLOWED_COUNTRIES</code> gelesen.</p>
     <p class="mb-1"><strong>Ausgeschlossene Länder:</strong> UK/GB ist standardmäßig ausgeschlossen (Einfuhrabgaben nach Brexit).</p>
     <p class="mb-0 text-muted">Filter basiert auf <code>itemLocation.country</code> der offiziellen eBay Browse API. Kein Scraping.</p>
+  </div>
+</div>
+
+<div class="card mb-4 border-secondary">
+  <div class="card-header fw-semibold"><i class="bi bi-activity me-1"></i>Systemstatus & Monitoring</div>
+  <div class="card-body">
+    <p class="mb-2 small">Übersicht über Watcher-Läufe, Fehler, eBay API und Datenbank.</p>
+    <a href="/system-status" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-activity me-1"></i>Zum Systemstatus
+    </a>
+    <a href="/healthz/full" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm ms-2">
+      <i class="bi bi-heart-pulse me-1"></i>/healthz/full
+    </a>
   </div>
 </div>
 
