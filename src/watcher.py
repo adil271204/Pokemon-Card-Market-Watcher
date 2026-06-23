@@ -260,9 +260,6 @@ class Watcher:
         # Persist the listing so we never re-process it
         self._save_seen(listing, wl, session)
 
-        if not deal.should_alert:
-            return "saved"
-
         # Dedup: never send a second alert for the same ebay_item_id + watchlist
         if self._alert_exists(listing.ebay_item_id, wl.id, session):
             logger.debug("Alert already exists for listing %s – skipping Telegram", listing.ebay_item_id)

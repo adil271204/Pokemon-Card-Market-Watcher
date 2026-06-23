@@ -171,13 +171,6 @@ class TelegramNotifier:
             logger.debug("Auction alerts disabled – skipping: %s", title[:60])
             return False
 
-        if not is_auction and score < config.TELEGRAM_ALERT_MIN_SCORE:
-            logger.debug(
-                "Score %.1f < min %.1f – skipping Telegram alert for: %s",
-                score, config.TELEGRAM_ALERT_MIN_SCORE, title[:60],
-            )
-            return False
-
         if is_auction:
             message = _format_auction_alert(
                 title=title,
