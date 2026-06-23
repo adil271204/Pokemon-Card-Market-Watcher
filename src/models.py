@@ -84,6 +84,13 @@ class SeenListing(Base):
     current_bid_price = Column(Float, nullable=True)
     bid_count = Column(Integer, nullable=True)
     item_end_date = Column(DateTime(timezone=True), nullable=True)
+    # Listing status system (added in migrate_listing_status_fields.py)
+    listing_status = Column(String(50), nullable=True, default="new")
+    status_reason = Column(Text, nullable=True)
+    user_note = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    purchased_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=True, default=_now, onupdate=_now)
 
     watchlist = relationship("Watchlist", back_populates="seen_listings")
 

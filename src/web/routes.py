@@ -1835,3 +1835,95 @@ async def smart_search_save_watchlist(request: Request) -> HTMLResponse | Redire
 
     auth.set_flash(request, f"Watchlist «{name}» wurde erstellt.", "success")
     return RedirectResponse(url="/watchlists", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Listing Status System
+# ---------------------------------------------------------------------------
+
+
+@router.post("/listings/{listing_id}/status", response_model=None)
+async def set_listing_status(request: Request, listing_id: int) -> RedirectResponse:
+    """Update a listing's status."""
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    status = (form.get("status") or "").strip()
+    reason = (form.get("reason") or "").strip() or None
+    note = (form.get("note") or "").strip() or None
+    return_url = (form.get("return_url") or "/listings").strip()
+
+    if not status:
+        auth.set_flash(request, "Status erforderlich.", "danger")
+        return RedirectResponse(url=return_url, status_code=303)
+
+    with get_session() as db:
+        try:
+            listing = services.update_listing_status(db, listing_id, status, reason, note)
+            if listing:
+                auth.set_flash(
+                    request,
+                    f"Listing-Status aktualisiert: {status}",
+                    "success"
+                )
+            else:
+                auth.set_flash(request, "Listing nicht gefunden oder gelöscht.", "warning")
+        except ValueError as e:
+            auth.set_flash(request, f"Fehler: {e}", "danger")
+
+    return RedirectResponse(url=return_url, status_code=303)
+
+
+@router.post("/listings/bulk-status", response_model=None)
+async def bulk_set_listing_status(request: Request) -> RedirectResponse:
+    """Update status for multiple listings."""
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    status = (form.get("status") or "").strip()
+    reason = (form.get("reason") or "").strip() or None
+    return_url = (form.get("return_url") or "/listings").strip()
+    listing_ids_raw = form.getlist("listing_ids")
+    listing_ids = [int(x) for x in listing_ids_raw if x.strip().isdigit()]
+
+    if not status:
+        auth.set_flash(request, "Status erforderlich.", "danger")
+        return RedirectResponse(url=return_url, status_code=303)
+
+    with get_session() as db:
+        try:
+            updated = services.bulk_update_listing_status(db, listing_ids, status, reason)
+            auth.set_flash(
+                request,
+                f"{updated} Listings aktualisiert: {status}",
+                "success"
+            )
+        except ValueError as e:
+            auth.set_flash(request, f"Fehler: {e}", "danger")
+
+    return RedirectResponse(url=return_url, status_code=303)
+
+
+@router.post("/listings/{listing_id}/note", response_model=None)
+async def set_listing_note(request: Request, listing_id: int) -> RedirectResponse:
+    """Update a listing's note."""
+    if redir := _guard(request):
+        return redir
+
+    form = await request.form()
+    note = (form.get("note") or "").strip() or None
+    return_url = (form.get("return_url") or "/listings").strip()
+
+    with get_session() as db:
+        listing = db.query(SeenListing).filter_by(id=listing_id).first()
+        if listing and listing.deleted_at is None:
+            listing.user_note = note
+            listing.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            auth.set_flash(request, "Notiz gespeichert.", "success")
+        else:
+            auth.set_flash(request, "Listing nicht gefunden oder gelöscht.", "warning")
+
+    return RedirectResponse(url=return_url, status_code=303)

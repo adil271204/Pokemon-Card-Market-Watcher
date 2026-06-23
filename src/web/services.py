@@ -347,5 +347,103 @@ def restore_listing(db: Session, listing_id: int) -> SeenListing | None:
     if listing is None:
         return None
     listing.deleted_at = None
+    listing.listing_status = "new"
+    listing.updated_at = datetime.now(timezone.utc)
     db.commit()
     return listing
+
+
+# ---------------------------------------------------------------------------
+# Listing Status System
+# ---------------------------------------------------------------------------
+
+VALID_STATUSES = {
+    "new",
+    "interesting",
+    "watching",
+    "ignored",
+    "purchased",
+    "too_expensive",
+    "wrong_card",
+    "bad_condition",
+    "shipping_too_high",
+    "not_relevant",
+}
+
+
+def update_listing_status(
+    db: Session,
+    listing_id: int,
+    status: str,
+    reason: str | None = None,
+    note: str | None = None,
+) -> SeenListing | None:
+    """Update a listing's status. Does not affect soft-deleted listings."""
+    if status not in VALID_STATUSES:
+        raise ValueError(f"Invalid status: {status}")
+
+    listing = (
+        db.query(SeenListing)
+        .filter_by(id=listing_id)
+        .filter(SeenListing.deleted_at.is_(None))
+        .first()
+    )
+    if listing is None:
+        return None
+
+    now = datetime.now(timezone.utc)
+    listing.listing_status = status
+    listing.status_reason = reason
+    if note:
+        listing.user_note = note
+    listing.updated_at = now
+
+    if status != "new":
+        listing.reviewed_at = now
+    if status == "purchased":
+        listing.purchased_at = now
+
+    db.commit()
+    return listing
+
+
+def bulk_update_listing_status(
+    db: Session,
+    listing_ids: list[int],
+    status: str,
+    reason: str | None = None,
+) -> int:
+    """Update status for multiple listings. Returns count of updated rows."""
+    if status not in VALID_STATUSES:
+        raise ValueError(f"Invalid status: {status}")
+
+    now = datetime.now(timezone.utc)
+    updated = (
+        db.query(SeenListing)
+        .filter(SeenListing.id.in_(listing_ids))
+        .filter(SeenListing.deleted_at.is_(None))
+        .all()
+    )
+
+    for listing in updated:
+        listing.listing_status = status
+        listing.status_reason = reason
+        listing.updated_at = now
+        if status != "new":
+            listing.reviewed_at = now
+        if status == "purchased":
+            listing.purchased_at = now
+
+    db.commit()
+    return len(updated)
+
+
+def get_listing_status_stats(db: Session) -> dict[str, int]:
+    """Get count of listings by status."""
+    rows = (
+        db.query(SeenListing.listing_status, func.count(SeenListing.id))
+        .filter(SeenListing.deleted_at.is_(None))
+        .group_by(SeenListing.listing_status)
+        .all()
+    )
+    return {(status or "new"): count for status, count in rows}
