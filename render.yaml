@@ -58,5 +58,11 @@ services:
         sync: false
       - key: EBAY_CLIENT_SECRET
         sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: ENABLE_TELEGRAM_ALERTS
+        value: "true"
       - key: LOG_LEVEL
         value: INFO

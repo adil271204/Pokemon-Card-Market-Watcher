@@ -196,10 +196,9 @@ class TelegramNotifier:
             )
 
         if not self._configured:
-            print("\n" + "=" * 60)
-            print("DEAL ALERT (Telegram not configured):")
-            print(message)
-            print("=" * 60 + "\n")
-            return True
+            logger.warning(
+                "Telegram not configured – alert NOT sent for: %s", title[:60]
+            )
+            return False
 
         return send_telegram_message(message)
