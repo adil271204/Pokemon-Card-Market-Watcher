@@ -1106,7 +1106,6 @@ async def settings(request: Request) -> HTMLResponse | RedirectResponse:
         "TELEGRAM_BOT_TOKEN": "✓ gesetzt" if config.TELEGRAM_BOT_TOKEN else "✗ fehlt",
         "TELEGRAM_CHAT_ID": "✓ gesetzt" if config.TELEGRAM_CHAT_ID else "✗ fehlt",
         "ENABLE_TELEGRAM_ALERTS": str(config.ENABLE_TELEGRAM_ALERTS),
-        "TELEGRAM_ALERT_MIN_SCORE": str(config.TELEGRAM_ALERT_MIN_SCORE),
         "TELEGRAM_ALERT_INCLUDE_AUCTIONS": str(config.TELEGRAM_ALERT_INCLUDE_AUCTIONS),
         # Auth
         "DASHBOARD_PASSWORD": "✓ gesetzt" if config.DASHBOARD_PASSWORD else "✗ fehlt",
