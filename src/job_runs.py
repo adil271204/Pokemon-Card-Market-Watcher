@@ -14,7 +14,7 @@ Usage:
 import json
 import logging
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -68,7 +68,10 @@ def finish_job_run(
     now = _now()
     run.status = status
     run.finished_at = now
-    run.duration_seconds = (now - run.started_at).total_seconds()
+    started = run.started_at
+    if started is not None and started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    run.duration_seconds = (now - started).total_seconds() if started else None
 
     if stats:
         _apply_stats(run, stats)
@@ -100,7 +103,10 @@ def record_job_error(
     now = _now()
     run.status = "failed"
     run.finished_at = now
-    run.duration_seconds = (now - run.started_at).total_seconds()
+    started = run.started_at
+    if started is not None and started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    run.duration_seconds = (now - started).total_seconds() if started else None
     run.errors_count = (run.errors_count or 0) + 1
 
     if isinstance(error, Exception):
