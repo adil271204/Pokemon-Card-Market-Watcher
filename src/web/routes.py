@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import json
+from sqlalchemy import func
 
 from src import config
 from src.database import get_session
@@ -81,7 +82,7 @@ def _render(request: Request, template: str, ctx: dict[str, Any] | None = None) 
 
 
 def _guard(request: Request) -> RedirectResponse | None:
-    return auth.auth_required(request)
+    return None  # Auth disabled – all routes are publicly accessible
 
 
 def _parse_optional_float(value: str | None) -> float | None:
