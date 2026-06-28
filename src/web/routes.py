@@ -2179,7 +2179,11 @@ async def system_status(request: Request) -> HTMLResponse | RedirectResponse:
         active_watchlists = db.query(Watchlist).filter_by(enabled=True).count()
         errors_24h = (
             db.query(JobRun)
-            .filter(JobRun.started_at >= cutoff_24h, JobRun.status == "failed")
+            .filter(
+                JobRun.started_at >= cutoff_24h,
+                JobRun.status == "failed",
+                JobRun.job_type == "watcher",
+            )
             .count()
         )
 
@@ -2203,7 +2207,7 @@ async def system_status(request: Request) -> HTMLResponse | RedirectResponse:
     if not config.USE_MOCK_EBAY and not config.EBAY_KEYS_SET:
         warnings.append("eBay API Keys fehlen – der Watcher wird abstürzen!")
     if errors_24h > 0:
-        warnings.append(f"{errors_24h} fehlgeschlagene Job-Runs in den letzten 24h.")
+        warnings.append(f"{errors_24h} fehlgeschlagene Watcher-Läufe in den letzten 24h.")
 
     return _render(request, "system_status.html", {
         "db_ok": db_ok,
