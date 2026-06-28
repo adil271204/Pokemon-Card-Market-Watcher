@@ -35,8 +35,8 @@
               {{ run.status }}
             </span>
           </td></tr>
-          <tr><th>Gestartet</th><td>{{ run.started_at.strftime('%d.%m.%Y %H:%M:%S') if run.started_at else '–' }}</td></tr>
-          <tr><th>Beendet</th><td>{{ run.finished_at.strftime('%d.%m.%Y %H:%M:%S') if run.finished_at else '–' }}</td></tr>
+          <tr><th>Gestartet</th><td><span class="localtime" data-utc="{{ run.started_at.isoformat() if run.started_at else '' }}">{{ run.started_at.strftime('%d.%m.%Y %H:%M:%S') if run.started_at else '–' }}</span></td></tr>
+          <tr><th>Beendet</th><td><span class="localtime" data-utc="{{ run.finished_at.isoformat() if run.finished_at else '' }}">{{ run.finished_at.strftime('%d.%m.%Y %H:%M:%S') if run.finished_at else '–' }}</span></td></tr>
           <tr><th>Dauer</th><td>{{ "%.2f"|format(run.duration_seconds) if run.duration_seconds else '–' }} Sekunden</td></tr>
         </table>
       </div>
@@ -87,4 +87,17 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.localtime[data-utc]').forEach(el => {
+  const iso = el.dataset.utc;
+  if (!iso) return;
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  if (isNaN(d)) return;
+  const opts = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+  el.textContent = d.toLocaleString('de-DE', opts);
+});
+</script>
 {% endblock %}

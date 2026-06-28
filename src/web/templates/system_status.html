@@ -123,7 +123,7 @@
       <div class="card-body small">
         {% if last_watcher %}
         <table class="table table-sm mb-0">
-          <tr><th>Zeitpunkt</th><td>{{ last_watcher.started_at.strftime('%d.%m.%Y %H:%M') if last_watcher.started_at else '–' }}</td></tr>
+          <tr><th>Zeitpunkt</th><td><span class="localtime" data-utc="{{ last_watcher.started_at.isoformat() if last_watcher.started_at else '' }}">{{ last_watcher.started_at.strftime('%d.%m.%Y %H:%M') if last_watcher.started_at else '–' }}</span></td></tr>
           <tr><th>Status</th><td>
             {% set s = last_watcher.status %}
             <span class="badge bg-{{ 'success' if s == 'success' else ('warning text-dark' if s == 'partial_success' else ('primary' if s == 'running' else 'danger')) }}">{{ s }}</span>
@@ -150,7 +150,7 @@
       <div class="card-body small">
         {% if last_watcher_ok %}
         <table class="table table-sm mb-0">
-          <tr><th>Zeitpunkt</th><td>{{ last_watcher_ok.started_at.strftime('%d.%m.%Y %H:%M') if last_watcher_ok.started_at else '–' }}</td></tr>
+          <tr><th>Zeitpunkt</th><td><span class="localtime" data-utc="{{ last_watcher_ok.started_at.isoformat() if last_watcher_ok.started_at else '' }}">{{ last_watcher_ok.started_at.strftime('%d.%m.%Y %H:%M') if last_watcher_ok.started_at else '–' }}</span></td></tr>
           <tr><th>Status</th><td><span class="badge bg-success">{{ last_watcher_ok.status }}</span></td></tr>
           <tr><th>Dauer</th><td>{{ "%.1f"|format(last_watcher_ok.duration_seconds) if last_watcher_ok.duration_seconds else '–' }} s</td></tr>
           <tr><th>Gespeichert</th><td>{{ last_watcher_ok.listings_saved }}</td></tr>
@@ -193,7 +193,7 @@
           {% for run in recent_runs %}
           {% set s = run.status %}
           <tr class="{% if s == 'failed' %}table-danger{% elif s == 'partial_success' %}table-warning{% elif s == 'running' %}table-info{% endif %}">
-            <td class="text-nowrap">{{ run.started_at.strftime('%d.%m %H:%M') if run.started_at else '–' }}</td>
+            <td class="text-nowrap"><span class="localtime" data-utc="{{ run.started_at.isoformat() if run.started_at else '' }}">{{ run.started_at.strftime('%d.%m %H:%M') if run.started_at else '–' }}</span></td>
             <td><span class="badge bg-secondary">{{ run.job_type }}</span></td>
             <td>
               <span class="badge bg-{{ 'success' if s == 'success' else ('warning text-dark' if s == 'partial_success' else ('primary' if s == 'running' else 'danger')) }}">
@@ -228,4 +228,17 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.localtime[data-utc]').forEach(el => {
+  const iso = el.dataset.utc;
+  if (!iso) return;
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  if (isNaN(d)) return;
+  const opts = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+  el.textContent = d.toLocaleString('de-DE', opts);
+});
+</script>
 {% endblock %}
